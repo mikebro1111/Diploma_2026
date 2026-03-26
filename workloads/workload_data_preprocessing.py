@@ -1,4 +1,23 @@
-import pandas as pd
+"""
+Data Preprocessing Benchmark — Pure NumPy Edition
+==================================================
+Uses numpy arrays exclusively (no pandas get_dummies, no DataFrame.copy()).
+
+Why pure numpy:
+  - numpy operations release the GIL (both GIL and no-GIL builds)
+  - no Python-object allocation storm (no dict/list churn from get_dummies)
+  - free-threaded Python (no-GIL) shows genuine parallelism benefit
+    because 8 threads can run numpy kernels truly concurrently
+  - GIL Python gains from numpy's C-level GIL releases too,
+    but is limited by the GIL between numpy calls
+
+Pipeline (identical for sequential / threading / multiprocessing):
+    1.  Z-score normalisation  (column-wise)
+    2.  Elementwise feature engineering:
+        sum, product, ratio, diff, hypot, exp, log, sin, polynomial
+    3.  Row-wise statistics: mean, std, max, min
+    → result shape:  (N, n_cols + 13)
+"""
 import numpy as np
 from threading import Thread
 from multiprocessing import Pool
@@ -8,190 +27,125 @@ import json
 from pathlib import Path
 
 
-# Numeric columns to normalize (set dynamically based on data source)
-NUMERIC_COLS = []
-CATEGORY_COLS = []
+# ---------------------------------------------------------------------------
+# Core compute function — pure numpy, identical for ALL modes
+# ---------------------------------------------------------------------------
+def _preprocess_array(chunk: np.ndarray) -> np.ndarray:
+    """
+    Heavy numpy feature-engineering on a 2-D float64 array.
+    Releases the GIL during every numpy call, so truly benefits from
+    free-threaded parallelism when run in threads.
+    """
+    # ── 1. Z-score normalisation ──────────────────────────────────────────
+    means = chunk.mean(axis=0)
+    stds  = chunk.std(axis=0) + 1e-8
+    n     = (chunk - means) / stds          # shape (rows, cols)
+
+    # ── 2. Pair-wise feature engineering ─────────────────────────────────
+    c0, c1, c2, c3 = n[:, 0], n[:, 1], n[:, 2], n[:, 3]
+
+    feat_sum   = c0 + c1
+    feat_prod  = c0 * c1
+    feat_ratio = c0 / (c1 + 1e-8)
+    feat_diff  = c2 - c3
+    feat_hypot = np.sqrt(c0 ** 2 + c1 ** 2)
+    feat_exp   = np.exp(np.clip(c2, -5.0, 5.0))
+    feat_log   = np.log1p(np.abs(c3))
+    feat_sin   = np.sin(c0 * np.pi)
+    feat_poly  = c0 ** 2 + c1 ** 3 + c2 ** 2
+
+    # ── 3. Row-wise statistics ────────────────────────────────────────────
+    feat_mean = n.mean(axis=1)
+    feat_std  = n.std(axis=1)
+    feat_max  = n.max(axis=1)
+    feat_min  = n.min(axis=1)
+
+    # ── 4. Concatenate all features ───────────────────────────────────────
+    extras = np.column_stack([
+        feat_sum, feat_prod, feat_ratio, feat_diff,
+        feat_hypot, feat_exp, feat_log, feat_sin, feat_poly,
+        feat_mean, feat_std, feat_max, feat_min,
+    ])
+    return np.hstack([n, extras])   # (rows, cols+13)
 
 
+# ---------------------------------------------------------------------------
+# Worker wrapper (top-level, picklable for multiprocessing.Pool)
+# ---------------------------------------------------------------------------
+def _mp_worker(chunk: np.ndarray) -> np.ndarray:
+    """Identical pipeline — used by Pool.map."""
+    return _preprocess_array(chunk)
+
+
+# ---------------------------------------------------------------------------
+# Benchmark class
+# ---------------------------------------------------------------------------
 class DataPreprocessor:
-    def __init__(self, data_source: str = "auto", num_rows: int = 3_000_000):
+    def __init__(self, num_rows: int = 3_000_000, num_cols: int = 8):
         """
-        Load data from real NYC Taxi parquet or generate synthetic data.
-        data_source: 'auto' (try real first), 'real', 'synthetic', or a file path
+        Generate a large float64 matrix that mimics tabular feature data.
+        num_cols >= 4 required for the full feature-engineering pipeline.
         """
-        global NUMERIC_COLS, CATEGORY_COLS
+        np.random.seed(42)
+        self.data = np.random.randn(num_rows, num_cols).astype(np.float64)
+        # Add a few skewed / non-negative columns (more realistic)
+        self.data[:, 2] = np.abs(self.data[:, 2]) * 10    # trip_distance-like
+        self.data[:, 3] = np.random.exponential(5, num_rows)  # fare-like
+        print(f"  Dataset: {num_rows:,} rows × {num_cols} cols  "
+              f"({self.data.nbytes / 1e6:.0f} MB)")
 
-        project_root = Path(__file__).resolve().parent.parent
-        real_data = project_root / "data_input" / "nyc_taxi.parquet"
+    # ── Sequential ────────────────────────────────────────────────────────
+    def process_sequential(self) -> np.ndarray:
+        """Single-threaded baseline."""
+        return _preprocess_array(self.data)
 
-        if data_source == "auto" and real_data.exists():
-            data_source = str(real_data)
+    # ── Threading ─────────────────────────────────────────────────────────
+    def process_threading(self, num_threads: int) -> np.ndarray:
+        """
+        Split data into equal row-chunks; each thread calls _preprocess_array.
+        With no-GIL Python, threads run truly in parallel (numpy releases GIL).
+        """
+        indexes   = np.array_split(np.arange(len(self.data)), num_threads)
+        results   = [None] * num_threads
 
-        if data_source not in ("synthetic",) and Path(data_source).exists():
-            print(f"  Loading real data: {data_source}")
-            self.df = pd.read_parquet(str(data_source))
-            # Select and prepare columns
-            numeric_candidates = self.df.select_dtypes(include=[np.number]).columns.tolist()
-            # Use key taxi columns
-            keep_numeric = [c for c in ['trip_distance', 'fare_amount', 'tip_amount',
-                                        'total_amount', 'passenger_count', 'tolls_amount',
-                                        'extra', 'mta_tax', 'congestion_surcharge']
-                           if c in self.df.columns]
-            keep_cat = [c for c in ['payment_type', 'RatecodeID', 'VendorID',
-                                    'store_and_fwd_flag'] if c in self.df.columns]
-            # Add derived columns for extra work
-            if 'tpep_pickup_datetime' in self.df.columns:
-                self.df['pickup_hour'] = self.df['tpep_pickup_datetime'].dt.hour
-                self.df['pickup_dow'] = self.df['tpep_pickup_datetime'].dt.dayofweek
-                keep_numeric += ['pickup_hour', 'pickup_dow']
-            self.df = self.df[keep_numeric + keep_cat].copy()
-            # Fill NaN
-            for c in keep_numeric:
-                self.df[c] = self.df[c].fillna(0).astype(np.float64)
-            for c in keep_cat:
-                self.df[c] = self.df[c].astype(str)
-            NUMERIC_COLS = keep_numeric
-            CATEGORY_COLS = keep_cat
-            print(f"  Loaded {len(self.df):,} rows × {len(self.df.columns)} columns "
-                  f"({len(keep_numeric)} numeric, {len(keep_cat)} categorical)")
-        else:
-            print(f"  Generating synthetic data: {num_rows:,} rows")
-            np.random.seed(42)
-            self.df = pd.DataFrame({
-                'feature1': np.random.randn(num_rows),
-                'feature2': np.random.randn(num_rows),
-                'feature3': np.random.randn(num_rows),
-                'feature4': np.random.randn(num_rows),
-                'feature5': np.random.randn(num_rows),
-                'feature6': np.random.randn(num_rows),
-                'category': np.random.choice(['A', 'B', 'C', 'D', 'E'], num_rows),
-                'subcategory': np.random.choice(['X', 'Y', 'Z'], num_rows),
-                'target': np.random.randint(0, 2, num_rows)
-            })
-            NUMERIC_COLS = ['feature1', 'feature2', 'feature3', 'feature4',
-                           'feature5', 'feature6']
-            CATEGORY_COLS = ['category', 'subcategory']
+        def worker(idx: int, rows: np.ndarray):
+            results[idx] = _preprocess_array(self.data[rows])
 
-    def preprocess_chunk(self, chunk_df: pd.DataFrame) -> pd.DataFrame:
-        """Process a single chunk — heavy processing"""
-        chunk_df = chunk_df.copy()
-
-        # Normalize all numeric columns
-        for col in NUMERIC_COLS:
-            if col in chunk_df.columns:
-                chunk_df[col] = (chunk_df[col] - chunk_df[col].mean()) / (chunk_df[col].std() + 1e-8)
-
-        # One-hot encoding
-        cat_cols_present = [c for c in CATEGORY_COLS if c in chunk_df.columns]
-        if cat_cols_present:
-            chunk_df = pd.get_dummies(chunk_df, columns=cat_cols_present)
-
-        # Feature engineering — more operations for heavier workload
-        ncols = [c for c in NUMERIC_COLS if c in chunk_df.columns]
-        if len(ncols) >= 2:
-            chunk_df['feat_sum_01'] = chunk_df[ncols[0]] + chunk_df[ncols[1]]
-            chunk_df['feat_prod_01'] = chunk_df[ncols[0]] * chunk_df[ncols[1]]
-            chunk_df['feat_ratio_01'] = chunk_df[ncols[0]] / (chunk_df[ncols[1]] + 1e-8)
-        if len(ncols) >= 4:
-            chunk_df['feat_diff_23'] = chunk_df[ncols[2]] - chunk_df[ncols[3]]
-            chunk_df['feat_hypot'] = np.sqrt(chunk_df[ncols[0]]**2 + chunk_df[ncols[1]]**2)
-            chunk_df['feat_exp'] = np.exp(chunk_df[ncols[2]].clip(-5, 5))
-            chunk_df['feat_log'] = np.log1p(np.abs(chunk_df[ncols[3]]))
-            chunk_df['feat_sin'] = np.sin(chunk_df[ncols[0]] * np.pi)
-            chunk_df['feat_poly'] = (chunk_df[ncols[0]]**2 +
-                                     chunk_df[ncols[1]]**3 +
-                                     chunk_df[ncols[2]]**2)
-        if len(ncols) >= 6:
-            chunk_df['feat_mean_all'] = chunk_df[ncols].mean(axis=1)
-            chunk_df['feat_std_all'] = chunk_df[ncols].std(axis=1)
-            chunk_df['feat_max_all'] = chunk_df[ncols].max(axis=1)
-            chunk_df['feat_min_all'] = chunk_df[ncols].min(axis=1)
-
-        return chunk_df
-
-    def process_sequential(self):
-        """Sequential processing"""
-        return self.preprocess_chunk(self.df)
-
-    def process_threading(self, num_threads: int):
-        """Processing with threads"""
-        chunk_size = len(self.df) // num_threads
-        chunks = [self.df.iloc[i:i+chunk_size] for i in range(0, len(self.df), chunk_size)]
-
-        results = [None] * len(chunks)
-
-        def worker(idx, chunk):
-            results[idx] = self.preprocess_chunk(chunk)
-
-        threads = []
-        for idx, chunk in enumerate(chunks):
-            t = Thread(target=worker, args=(idx, chunk))
+        threads = [Thread(target=worker, args=(i, idx))
+                   for i, idx in enumerate(indexes)]
+        for t in threads:
             t.start()
-            threads.append(t)
-
         for t in threads:
             t.join()
 
-        return pd.concat(results, ignore_index=True)
+        return np.vstack(results)
 
-    def process_multiprocessing(self, num_processes: int):
-        """Processing with multiprocessing"""
-        chunk_size = len(self.df) // num_processes
-        chunks = [self.df.iloc[i:i+chunk_size] for i in range(0, len(self.df), chunk_size)]
-
+    # ── Multiprocessing ───────────────────────────────────────────────────
+    def process_multiprocessing(self, num_processes: int) -> np.ndarray:
+        """
+        Split data into chunks; each subprocess calls _mp_worker (identical).
+        True parallelism on both GIL and no-GIL builds.
+        """
+        chunks = np.array_split(self.data, num_processes)
         with Pool(num_processes) as pool:
-            results = pool.map(preprocess_chunk_static, chunks)
-
-        return pd.concat(results, ignore_index=True)
-
-
-def preprocess_chunk_static(chunk_df: pd.DataFrame) -> pd.DataFrame:
-    """Static function for multiprocessing — uses same logic as class method."""
-    chunk_df = chunk_df.copy()
-
-    # Normalization
-    for col in NUMERIC_COLS:
-        if col in chunk_df.columns:
-            chunk_df[col] = (chunk_df[col] - chunk_df[col].mean()) / (chunk_df[col].std() + 1e-8)
-
-    # One-hot encoding
-    cat_cols_present = [c for c in CATEGORY_COLS if c in chunk_df.columns]
-    if cat_cols_present:
-        chunk_df = pd.get_dummies(chunk_df, columns=cat_cols_present)
-
-    # Feature engineering
-    ncols = [c for c in NUMERIC_COLS if c in chunk_df.columns]
-    if len(ncols) >= 2:
-        chunk_df['feat_sum_01'] = chunk_df[ncols[0]] + chunk_df[ncols[1]]
-        chunk_df['feat_prod_01'] = chunk_df[ncols[0]] * chunk_df[ncols[1]]
-        chunk_df['feat_ratio_01'] = chunk_df[ncols[0]] / (chunk_df[ncols[1]] + 1e-8)
-    if len(ncols) >= 4:
-        chunk_df['feat_diff_23'] = chunk_df[ncols[2]] - chunk_df[ncols[3]]
-        chunk_df['feat_hypot'] = np.sqrt(chunk_df[ncols[0]]**2 + chunk_df[ncols[1]]**2)
-        chunk_df['feat_exp'] = np.exp(chunk_df[ncols[2]].clip(-5, 5))
-        chunk_df['feat_log'] = np.log1p(np.abs(chunk_df[ncols[3]]))
-        chunk_df['feat_sin'] = np.sin(chunk_df[ncols[0]] * np.pi)
-        chunk_df['feat_poly'] = (chunk_df[ncols[0]]**2 +
-                                 chunk_df[ncols[1]]**3 +
-                                 chunk_df[ncols[2]]**2)
-    if len(ncols) >= 6:
-        chunk_df['feat_mean_all'] = chunk_df[ncols].mean(axis=1)
-        chunk_df['feat_std_all'] = chunk_df[ncols].std(axis=1)
-
-    return chunk_df
+            results = pool.map(_mp_worker, chunks)
+        return np.vstack(results)
 
 
-def run_benchmark(data_source: str = "auto", num_rows: int = 3_000_000, num_runs: int = 3):
-    """Runs benchmark for all modes"""
-    results = {}
-
-    preprocessor = DataPreprocessor(data_source=data_source, num_rows=num_rows)
+# ---------------------------------------------------------------------------
+# Benchmark runner
+# ---------------------------------------------------------------------------
+def run_benchmark(num_rows: int = 3_000_000, num_cols: int = 8,
+                  num_runs: int = 3) -> dict:
+    """Run all modes and return timing results."""
+    preprocessor = DataPreprocessor(num_rows=num_rows, num_cols=num_cols)
+    results      = {}
 
     modes = [
-        ("sequential", lambda: preprocessor.process_sequential()),
-        ("threading_2", lambda: preprocessor.process_threading(2)),
-        ("threading_4", lambda: preprocessor.process_threading(4)),
-        ("threading_8", lambda: preprocessor.process_threading(8)),
+        ("sequential",        lambda: preprocessor.process_sequential()),
+        ("threading_2",       lambda: preprocessor.process_threading(2)),
+        ("threading_4",       lambda: preprocessor.process_threading(4)),
+        ("threading_8",       lambda: preprocessor.process_threading(8)),
         ("multiprocessing_2", lambda: preprocessor.process_multiprocessing(2)),
         ("multiprocessing_4", lambda: preprocessor.process_multiprocessing(4)),
         ("multiprocessing_8", lambda: preprocessor.process_multiprocessing(8)),
@@ -200,46 +154,42 @@ def run_benchmark(data_source: str = "auto", num_rows: int = 3_000_000, num_runs
     for mode_name, mode_func in modes:
         times = []
         for _ in range(num_runs):
-            start = time.perf_counter()
-            _ = mode_func()
+            start   = time.perf_counter()
+            _       = mode_func()
             elapsed = time.perf_counter() - start
             times.append(elapsed)
 
-        avg_time = sum(times) / len(times)
+        avg_time = float(np.mean(times))
         results[mode_name] = {
-            "avg_time": avg_time,
-            "all_times": times
+            "avg_time":  avg_time,
+            "all_times": times,
         }
-        print(f"{mode_name}: {avg_time:.4f}s")
+        print(f"  {mode_name:<22}: {avg_time:.4f}s")
 
     return results
 
 
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    # Accept 'real', 'synthetic', or a number of rows
-    data_source = "auto"
     num_rows = 3_000_000
-
     if len(sys.argv) > 1:
-        arg = sys.argv[1]
-        if arg in ("real", "auto", "synthetic"):
-            data_source = arg
-        else:
-            try:
-                num_rows = int(arg)
-            except ValueError:
-                data_source = arg  # treat as file path
+        try:
+            num_rows = int(sys.argv[1])
+        except ValueError:
+            pass   # ignore non-integer args (e.g. "auto" from run_multiple_benchmarks)
 
     print("=" * 60)
-    print(f"Data Preprocessing Benchmark")
-    print(f"  Source: {data_source}, Fallback rows: {num_rows:,}")
+    print(f"Data Preprocessing Benchmark (pure numpy)")
+    print(f"  Rows: {num_rows:,}")
     print("=" * 60)
 
-    results = run_benchmark(data_source=data_source, num_rows=num_rows)
+    results = run_benchmark(num_rows=num_rows)
 
-    # Save results
-    with open("results/data_preprocessing_results.json", "w") as f:
+    out = Path("results/data_preprocessing_results.json")
+    out.parent.mkdir(exist_ok=True)
+    with open(out, "w") as f:
         json.dump(results, f, indent=2)
 
-    print("\nResults saved to results/data_preprocessing_results.json")
-
+    print(f"\nResults saved to {out}")

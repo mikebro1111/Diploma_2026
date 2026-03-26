@@ -314,13 +314,12 @@ def plot_05_boxplot(data):
         bp['boxes'][1].set_facecolor(NOGIL_COLOR)
         bp['boxes'][1].set_alpha(0.7)
 
-        # t-test annotation
-        n = min(len(gil_times), len(nogil_times))
-        t_stat, p_val = stats.ttest_ind(gil_times, nogil_times)
+        # Welch's t-test (does not assume equal variances between groups)
+        t_stat, p_val = stats.ttest_ind(gil_times, nogil_times, equal_var=False)
         sig = "***" if p_val < 0.001 else "**" if p_val < 0.01 else "*" if p_val < 0.05 else "ns"
         speedup = np.mean(gil_times) / np.mean(nogil_times) if np.mean(nogil_times) > 0 else 0
 
-        ax.set_title(f"{title}\nSpeedup: {speedup:.2f}x  p={p_val:.4f} {sig}", fontsize=10)
+        ax.set_title(f"{title}\nSpeedup: {speedup:.2f}x  Welch p={p_val:.4f} {sig}", fontsize=10)
         ax.set_ylabel('Time (s)')
         ax.grid(axis='y', alpha=0.3)
 
@@ -816,7 +815,8 @@ def run_statistical_analysis(data):
                 n_mean = n_d["avg_time"]
                 speedup = g_mean / n_mean if n_mean > 0 else 0
 
-                t_stat, p_val = stats.ttest_ind(gt, nt)
+                # Welch's t-test (equal_var=False — does not assume equal variances)
+                t_stat, p_val = stats.ttest_ind(gt, nt, equal_var=False)
 
                 # Cohen's d (effect size)
                 pooled_std = np.sqrt((np.var(gt, ddof=1) + np.var(nt, ddof=1)) / 2)
@@ -829,6 +829,8 @@ def run_statistical_analysis(data):
                       f"{n_obs:>4} {t_stat:>8.2f} {p_val:>8.4f} {sig:>5}")
 
                 analysis[f"{name}_{key}"] = {
+                    "test": "Welch t-test",
+                    "equal_var": False,
                     "gil_mean": float(g_mean),
                     "gil_std": float(g_d.get("std_time", 0)),
                     "nogil_mean": float(n_mean),

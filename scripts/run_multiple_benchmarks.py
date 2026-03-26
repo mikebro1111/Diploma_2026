@@ -498,8 +498,8 @@ def main():
                 speedup = g_mean / n_mean if n_mean > 0 else 0
                 n_samples = min(len(g_times), len(n_times))
 
-                # Independent t-test (not paired since different invocations)
-                t_stat, p_val = stats.ttest_ind(g_times, n_times)
+                # Welch's t-test (equal_var=False — does not assume equal variances)
+                t_stat, p_val = stats.ttest_ind(g_times, n_times, equal_var=False)
 
                 sig = "***" if p_val < 0.001 else "**" if p_val < 0.01 else "*" if p_val < 0.05 else ""
                 faster = "NoGIL" if speedup > 1 else "GIL"
