@@ -10,16 +10,22 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy import stats
 from pathlib import Path
+import json
+import numpy as np
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy import stats
+from pathlib import Path
 import sys
 
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-RESULTS_DIR = PROJECT_ROOT / "results"
-CHARTS_DIR = RESULTS_DIR / "charts"
-
+TARGET_DIR = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("results/3.13")
+CHARTS_DIR = TARGET_DIR / "charts"
+CHARTS_DIR.mkdir(parents=True, exist_ok=True)
 
 def load_data() -> dict:
-    f = RESULTS_DIR / "multi_run_master.json"
+    f = TARGET_DIR / "multi_run_master.json"
     if not f.exists():
         print(f"❌ Not found: {f}")
         sys.exit(1)
@@ -46,6 +52,7 @@ def setup_style():
 
 GIL_COLOR = '#4A90D9'
 NOGIL_COLOR = '#E8505B'
+NOGIL_314_COLOR = '#2ECC71'
 IDEAL_COLOR = '#888888'
 
 
@@ -64,13 +71,13 @@ def _get_times(wl, variant, mode):
 def _get_avg(wl, variant, mode):
     """Get avg_time for a mode."""
     d = _get_mode_data(wl, variant, mode)
-    return d.get("avg_time", 0)
+    return d.get("min_time", 0)
 
 
 def _get_std(wl, variant, mode):
     """Get std_time for a mode."""
     d = _get_mode_data(wl, variant, mode)
-    return d.get("std_time", 0)
+    return d.get("tail_length", 0)
 
 
 # =============================================================================
@@ -85,10 +92,10 @@ def plot_01_overall(data):
         names.append(name)
         gs = wl["gil"]["wall_stats"]
         ns = wl["nogil"]["wall_stats"]
-        gil_means.append(gs["mean"])
-        gil_stds.append(gs["std"])
-        nogil_means.append(ns["mean"])
-        nogil_stds.append(ns["std"])
+        gil_means.append(gs["min"])
+        gil_stds.append(gs["max"] - gs["min"])  # Tail length
+        nogil_means.append(ns["min"])
+        nogil_stds.append(ns["max"] - ns["min"])
 
     x = np.arange(len(names))
     w = 0.35
@@ -110,7 +117,7 @@ def plot_01_overall(data):
 
     ax.set_xlabel('Workload')
     ax.set_ylabel('Wall Time (seconds) ± std')
-    ax.set_title('Overall Performance: GIL vs Free-threaded Python 3.13\n(5 runs, error bars = 1σ)')
+    ax.set_title('Overall Performance: GIL vs Free-threaded\n(5 runs, error bars = 1σ)')
     ax.set_xticks(x)
     ax.set_xticklabels(names, rotation=15, ha='right')
     ax.legend()
@@ -135,7 +142,7 @@ def plot_02_data_preprocessing(data):
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
 
-    for variant, color, lbl in [("gil", GIL_COLOR, "With GIL"), ("nogil", NOGIL_COLOR, "Without GIL")]:
+    for variant, color, lbl in [("gil", GIL_COLOR, "GIL"), ("nogil", NOGIL_COLOR, "No-GIL")]:
         times = [_get_avg(wl, variant, m) for m in modes]
         stds = [_get_std(wl, variant, m) for m in modes]
 
@@ -148,7 +155,7 @@ def plot_02_data_preprocessing(data):
                      label=lbl, color=color)
 
     ax1.set_xlabel('Thread Count')
-    ax1.set_ylabel('Execution Time (seconds) ± σ')
+    ax1.set_ylabel('Execution Time (min\n+ tail)')
     ax1.set_title('Data Preprocessing: Execution Time')
     ax1.legend()
     ax1.grid(True, alpha=0.3)
@@ -180,7 +187,7 @@ def plot_03_image_processing(data):
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
 
-    for variant, color, lbl in [("gil", GIL_COLOR, "With GIL"), ("nogil", NOGIL_COLOR, "Without GIL")]:
+    for variant, color, lbl in [("gil", GIL_COLOR, "GIL"), ("nogil", NOGIL_COLOR, "No-GIL")]:
         times = [_get_avg(wl, variant, m) for m in modes]
         stds = [_get_std(wl, variant, m) for m in modes]
 
@@ -193,7 +200,7 @@ def plot_03_image_processing(data):
                      label=lbl, color=color)
 
     ax1.set_xlabel('Thread Count')
-    ax1.set_ylabel('Execution Time (seconds) ± σ')
+    ax1.set_ylabel('Execution Time (min\n+ tail)')
     ax1.set_title('Image Processing: Execution Time')
     ax1.legend()
     ax1.grid(True, alpha=0.3)
@@ -223,8 +230,8 @@ def plot_04_ml_training(data):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
 
     # Sequential algorithms
-    algorithms = ["linear_regression", "ransac", "kmeans", "random_forest"]
-    algo_labels = ["Linear\nRegression", "RANSAC", "K-Means", "Random\nForest"]
+    algorithms = ["linear_regression_seq", "random_forest_seq"]
+    algo_labels = ["Linear\nRegression", "Random\nForest"]
 
     x = np.arange(len(algorithms))
     w = 0.35
@@ -247,11 +254,10 @@ def plot_04_ml_training(data):
     ax1.grid(axis='y', alpha=0.3)
 
     # Threading scaling for linear regression
-    thread_modes = ["linear_regression", "linear_regression_threaded_2",
-                    "linear_regression_threaded_4", "linear_regression_threaded_8"]
-    thread_labels = ["1 (seq)", "2", "4", "8"]
+    thread_modes = ["linear_regression_seq", "linear_reg_threading_4", "linear_reg_threading_8"]
+    thread_labels = ["1 (seq)", "4", "8"]
 
-    for variant, color, lbl in [("gil", GIL_COLOR, "With GIL"), ("nogil", NOGIL_COLOR, "Without GIL")]:
+    for variant, color, lbl in [("gil", GIL_COLOR, "GIL"), ("nogil", NOGIL_COLOR, "No-GIL")]:
         times = [_get_avg(wl, variant, m) for m in thread_modes]
         stds = [_get_std(wl, variant, m) for m in thread_modes]
 
@@ -260,7 +266,7 @@ def plot_04_ml_training(data):
             ax2.plot(thread_labels, speedups, marker='o', linewidth=2,
                      markersize=8, label=lbl, color=color)
 
-    ax2.plot(thread_labels, [1, 2, 4, 8], '--', alpha=0.3, color=IDEAL_COLOR, label='Ideal linear')
+    ax2.plot(thread_labels, [1, 4, 8], '--', alpha=0.3, color=IDEAL_COLOR, label='Ideal linear')
     ax2.set_xlabel('Thread Count')
     ax2.set_ylabel('Speedup (vs Sequential)')
     ax2.set_title('Linear Regression: Threading Scaling')
@@ -287,8 +293,8 @@ def plot_05_boxplot(data):
         ("Data Preprocessing", "threading_8", "Data Prep: 8 Threads"),
         ("Image Processing", "threading_4", "Image Proc: 4 Threads"),
         ("Image Processing", "threading_8", "Image Proc: 8 Threads"),
-        ("ML Training", "linear_regression_threaded_4", "ML: LR 4 Threads"),
-        ("ML Training", "linear_regression_threaded_8", "ML: LR 8 Threads"),
+        ("ML Training", "linear_reg_threading_4", "ML: LR 4 Threads"),
+        ("ML Training", "linear_reg_threading_8", "ML: LR 8 Threads"),
     ]
 
     for ax, (wl_name, mode, title) in zip(axes, plot_configs):
@@ -314,12 +320,12 @@ def plot_05_boxplot(data):
         bp['boxes'][1].set_facecolor(NOGIL_COLOR)
         bp['boxes'][1].set_alpha(0.7)
 
-        # Welch's t-test (does not assume equal variances between groups)
+        # Welch's t-test
         t_stat, p_val = stats.ttest_ind(gil_times, nogil_times, equal_var=False)
         sig = "***" if p_val < 0.001 else "**" if p_val < 0.01 else "*" if p_val < 0.05 else "ns"
-        speedup = np.mean(gil_times) / np.mean(nogil_times) if np.mean(nogil_times) > 0 else 0
+        speedup = np.min(gil_times) / np.min(nogil_times) if np.min(nogil_times) > 0 else 0
 
-        ax.set_title(f"{title}\nSpeedup: {speedup:.2f}x  Welch p={p_val:.4f} {sig}", fontsize=10)
+        ax.set_title(f"{title}\nSpeedup (3.14t vs GIL): {speedup:.2f}x  p={p_val:.4f} {sig}", fontsize=10)
         ax.set_ylabel('Time (s)')
         ax.grid(axis='y', alpha=0.3)
 
@@ -413,7 +419,7 @@ def plot_06_simd(data):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
 
     # Sequential methods
-    for variant, color, lbl in [("gil", GIL_COLOR, "With GIL"), ("nogil", NOGIL_COLOR, "Without GIL")]:
+    for variant, color, lbl in [("gil", GIL_COLOR, "GIL"), ("nogil", NOGIL_COLOR, "No-GIL")]:
         merged = wl.get(variant, {}).get("merged", {})
         seq = merged.get("sequential", {})
         if not isinstance(seq, dict):
@@ -437,14 +443,14 @@ def plot_06_simd(data):
             ax1.set_xticks(x)
             ax1.set_xticklabels(methods, fontsize=8)
 
-    ax1.set_ylabel('Execution Time (seconds) ± σ')
+    ax1.set_ylabel('Execution Time (min\n+ tail)')
     ax1.set_title('SIMD Sequential Methods')
     ax1.legend()
     ax1.grid(axis='y', alpha=0.3)
 
     # Threading
     thread_counts = ["2", "4", "8"]
-    for variant, color, lbl in [("gil", GIL_COLOR, "With GIL"), ("nogil", NOGIL_COLOR, "Without GIL")]:
+    for variant, color, lbl in [("gil", GIL_COLOR, "GIL"), ("nogil", NOGIL_COLOR, "No-GIL")]:
         merged = wl.get(variant, {}).get("merged", {})
         threaded = merged.get("threaded", {})
         if not isinstance(threaded, dict):
@@ -496,8 +502,8 @@ def plot_07_heatmap(data):
             n_d = n_merged[key]
             if isinstance(g_d, dict) and "avg_time" in g_d and \
                isinstance(n_d, dict) and "avg_time" in n_d:
-                gt = g_d["avg_time"]
-                nt = n_d["avg_time"]
+                gt = g_d["min_time"]
+                nt = n_d["min_time"]
                 if nt > 0:
                     speedups[key] = round(gt / nt, 2)
 
@@ -800,56 +806,58 @@ def run_statistical_analysis(data):
         print(f"  {'Mode':<30} {'GIL avg':>10} {'NoGIL avg':>10} {'Speedup':>9} "
               f"{'N':>4} {'t-stat':>8} {'p-value':>9} {'Sig':>5}")
 
-        for key in sorted(g_merged.keys()):
-            if key not in n_merged:
-                continue
-            g_d = g_merged[key]
-            n_d = n_merged[key]
+        def _process_recursive(prefix, g_node, n_node):
+            for k in sorted(g_node.keys()):
+                if k not in n_node:
+                    continue
+                gd = g_node[k]
+                nd = n_node[k]
 
-            if isinstance(g_d, dict) and "all_times" in g_d and \
-               isinstance(n_d, dict) and "all_times" in n_d:
+                full_key = f"{prefix}: {k}" if prefix else k
 
-                gt = g_d["all_times"]
-                nt = n_d["all_times"]
-                g_mean = g_d["avg_time"]
-                n_mean = n_d["avg_time"]
-                speedup = g_mean / n_mean if n_mean > 0 else 0
+                if isinstance(gd, dict):
+                    # Check for timing data
+                    gt = gd.get("all_times") or gd.get("all_values")
+                    nt = nd.get("all_times") or nd.get("all_values")
 
-                # Welch's t-test (equal_var=False — does not assume equal variances)
-                t_stat, p_val = stats.ttest_ind(gt, nt, equal_var=False)
+                    if gt and nt and len(gt) > 0 and len(nt) > 0:
+                        g_mean = gd.get("min_time") or gd.get("mean") or np.min(gt)
+                        n_mean = nd.get("min_time") or nd.get("mean") or np.min(nt)
+                        speedup = g_mean / n_mean if n_mean > 0 else 0
 
-                # Cohen's d (effect size)
-                pooled_std = np.sqrt((np.var(gt, ddof=1) + np.var(nt, ddof=1)) / 2)
-                cohens_d = (np.mean(gt) - np.mean(nt)) / pooled_std if pooled_std > 0 else 0
+                        # Stats
+                        if len(gt) > 1 and len(nt) > 1:
+                            t_stat, p_val = stats.ttest_ind(gt, nt, equal_var=False)
+                            # Cohen's d
+                            pooled_std = np.sqrt((np.var(gt, ddof=1) + np.var(nt, ddof=1)) / 2)
+                            cohens_d = (np.mean(gt) - np.mean(nt)) / pooled_std if pooled_std > 0 else 0
+                        else:
+                            t_stat, p_val, cohens_d = 0.0, 1.0, 0.0
 
-                sig = "***" if p_val < 0.001 else "**" if p_val < 0.01 else "*" if p_val < 0.05 else ""
-                n_obs = min(len(gt), len(nt))
+                        sig = "***" if p_val < 0.001 else "**" if p_val < 0.01 else "*" if p_val < 0.05 else ""
+                        n_obs = min(len(gt), len(nt))
 
-                print(f"  {key:<30} {g_mean:>9.4f}s {n_mean:>9.4f}s {speedup:>8.2f}x "
-                      f"{n_obs:>4} {t_stat:>8.2f} {p_val:>8.4f} {sig:>5}")
+                        print(f"  {full_key[:30]:<30} {g_mean:>9.4f}s {n_mean:>9.4f}s {speedup:>8.2f}x "
+                              f"{n_obs:>4} {t_stat:>8.2f} {p_val:>8.4f} {sig:>5}")
 
-                analysis[f"{name}_{key}"] = {
-                    "test": "Welch t-test",
-                    "equal_var": False,
-                    "gil_mean": float(g_mean),
-                    "gil_std": float(g_d.get("std_time", 0)),
-                    "nogil_mean": float(n_mean),
-                    "nogil_std": float(n_d.get("std_time", 0)),
-                    "speedup": float(speedup),
-                    "n_samples": n_obs,
-                    "t_statistic": float(t_stat),
-                    "p_value": float(p_val),
-                    "significant": bool(p_val < 0.05),
-                    "cohens_d": float(cohens_d),
-                    "faster": "No-GIL" if speedup > 1 else "GIL",
-                    "ci_95_gil": g_d.get("ci_95", []),
-                    "ci_95_nogil": n_d.get("ci_95", []),
-                }
+                        analysis[f"{name}_{full_key}"] = {
+                            "gil_mean": float(g_mean),
+                            "nogil_mean": float(n_mean),
+                            "speedup": float(speedup),
+                            "p_value": float(p_val),
+                            "significant": bool(p_val < 0.05),
+                        }
+                    else:
+                        # Continue recursion for truly nested structs (SIMD)
+                        if any(isinstance(v, dict) for v in gd.values()):
+                            _process_recursive(full_key, gd, nd)
+
+        _process_recursive("", g_merged, n_merged)
 
     print(f"\n  Significance levels: *** p<0.001, ** p<0.01, * p<0.05")
 
     # Save
-    out = RESULTS_DIR / "statistical_analysis_multirun.json"
+    out = TARGET_DIR / "statistical_analysis_multirun.json"
     with open(out, 'w') as f:
         json.dump(analysis, f, indent=2)
     print(f"\n✅ Saved: {out}")

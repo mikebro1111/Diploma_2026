@@ -24,6 +24,8 @@ wheels/
 venv/
 venv_gil/
 venv_nogil/
+venv_gil_314/
+venv_nogil_314/
 env/
 ENV/
 
@@ -51,5 +53,4 @@ Thumbs.db
 diploma_detailed_plan.md
 
 # Private and IDE files
-.claude/
 diploma_detailed_plan.md

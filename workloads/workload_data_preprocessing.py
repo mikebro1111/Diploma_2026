@@ -81,7 +81,7 @@ def _mp_worker(chunk: np.ndarray) -> np.ndarray:
 # Benchmark class
 # ---------------------------------------------------------------------------
 class DataPreprocessor:
-    def __init__(self, num_rows: int = 3_000_000, num_cols: int = 8):
+    def __init__(self, num_rows: int = 10_000_000, num_cols: int = 8):
         """
         Generate a large float64 matrix that mimics tabular feature data.
         num_cols >= 4 required for the full feature-engineering pipeline.
@@ -105,11 +105,11 @@ class DataPreprocessor:
         Split data into equal row-chunks; each thread calls _preprocess_array.
         With no-GIL Python, threads run truly in parallel (numpy releases GIL).
         """
-        indexes   = np.array_split(np.arange(len(self.data)), num_threads)
-        results   = [None] * num_threads
+        indexes = np.array_split(np.arange(len(self.data)), num_threads)
+        results = np.empty((self.data.shape[0], self.data.shape[1] + 13), dtype=self.data.dtype)
 
         def worker(idx: int, rows: np.ndarray):
-            results[idx] = _preprocess_array(self.data[rows])
+            results[rows] = _preprocess_array(self.data[rows])
 
         threads = [Thread(target=worker, args=(i, idx))
                    for i, idx in enumerate(indexes)]
@@ -118,7 +118,7 @@ class DataPreprocessor:
         for t in threads:
             t.join()
 
-        return np.vstack(results)
+        return results
 
     # ── Multiprocessing ───────────────────────────────────────────────────
     def process_multiprocessing(self, num_processes: int) -> np.ndarray:
@@ -135,7 +135,7 @@ class DataPreprocessor:
 # ---------------------------------------------------------------------------
 # Benchmark runner
 # ---------------------------------------------------------------------------
-def run_benchmark(num_rows: int = 3_000_000, num_cols: int = 8,
+def run_benchmark(num_rows: int = 10_000_000, num_cols: int = 8,
                   num_runs: int = 3) -> dict:
     """Run all modes and return timing results."""
     preprocessor = DataPreprocessor(num_rows=num_rows, num_cols=num_cols)

@@ -84,23 +84,29 @@ pyenv install 3.13.0t
 ```bash
 cd Diploma_2026
 
-# GIL variant
+# GIL 3.13 variant
 ~/.pyenv/versions/3.13.0/bin/python3.13 -m venv venv_gil
 
-# No-GIL (free-threaded) variant
+# No-GIL 3.13 variant
 ~/.pyenv/versions/3.13.0t/bin/python3.13t -m venv venv_nogil
+
+# GIL 3.14 variant
+~/.pyenv/versions/3.14.0/bin/python3.14 -m venv venv_gil_314
+
+# No-GIL 3.14 variant
+~/.pyenv/versions/3.14.0t/bin/python3.14t -m venv venv_nogil_314
 ```
 
 ### 4. Installing Python Dependencies
 
 ```bash
 # GIL environment
-venv_gil/bin/pip install --upgrade pip
 venv_gil/bin/pip install -r requirements_gil.txt
 
 # No-GIL environment
-venv_nogil/bin/pip install --upgrade pip
 venv_nogil/bin/pip install -r requirements_nogil.txt
+
+# (Repeat for 3.14 venvs as needed)
 ```
 
 > **Note:** `requirements_nogil.txt` excludes `numba` and `llvmlite` as they are currently incompatible with free-threaded Python.
@@ -139,12 +145,25 @@ venv_gil/bin/python scripts/download_real_datasets.py
 
 Multi-iteration run with CPU/Memory monitoring:
 
+### Multi-Iteration Execution
+
 ```bash
-# 3 iterations (each iteration contains 3 internal runs = 9 total measurements)
-venv_gil/bin/python scripts/run_multiple_benchmarks.py 3
+# 5 iterations for all versions (3.13 and 3.14)
+venv_gil/bin/python scripts/run_multiple_benchmarks.py 5
+
+# Targeted run: 10 iterations only for Python 3.14
+venv_gil/bin/python scripts/run_multiple_benchmarks.py 10 3.14
 ```
 
-Parameter is the number of iterations (default: 5). More iterations = better statistics.
+### Visualization
+
+```bash
+# Visualize 3.13 results
+venv_gil/bin/python scripts/visualize_results.py results/3.13
+
+# Visualize 3.14 results
+venv_gil/bin/python scripts/visualize_results.py results/3.14
+```
 
 **Approximate time** (3 iterations, Apple M-series):
 

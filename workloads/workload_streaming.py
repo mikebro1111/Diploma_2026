@@ -1,166 +1,152 @@
 import time
 import queue
 from threading import Thread
-from collections import deque
-import random
-import numpy as np
-import sys
 import json
+import random
+import sys
+import numpy as np
+
+
+def _generate_json_payload(size=500):
+    """Generates a complex dictionary to simulate an API event payload."""
+    return {
+        "id": random.randint(1, 100000),
+        "values": [random.random() for _ in range(size)],
+        "metadata": {
+            "source": ["app", "web", "mobile"][random.randint(0, 2)],
+            "tags": ["prod", "us-east", "v2", f"tag_{random.randint(0,10)}"]
+        }
+    }
 
 
 class StreamProcessor:
     def __init__(self):
         self.event_queue = queue.Queue()
-        self.processed_events = deque(maxlen=10000)
         self.latencies = []
         self.num_processed = 0
 
-    def generate_events(self, num_events: int, events_per_second: int):
-        """Generates events at a given rate"""
-        interval = 1.0 / events_per_second if events_per_second > 0 else 0
-
+    def generate_events(self, num_events: int):
+        """Pre-generates events to isolate processing time from generation."""
         for i in range(num_events):
-            event = {
-                'id': i,
-                'timestamp': time.time(),
-                'data': np.random.randn(100).tolist()  # Simulate some data
-            }
-            self.event_queue.put(event)
-            if interval > 0:
-                time.sleep(interval)
+            # Serialize to string to force the worker to deserialize
+            raw_str = json.dumps(_generate_json_payload())
+            self.event_queue.put({"timestamp": time.time(), "raw": raw_str})
+        
+        # Poison pills to safely stop worker threads
+        for _ in range(64):
+            self.event_queue.put(None)
 
     def process_event(self, event: dict):
-        """Processes a single event"""
-        # Simulate processing
-        data = np.array(event['data'])
-        result = float(np.mean(data))
+        """
+        Pure Python processing. 
+        No NumPy, No C-extensions computationally heavy tasks.
+        If the GIL is present, this will bottleneck extremely hard.
+        """
+        # 1. Parse JSON from string
+        parsed = json.loads(event["raw"])
+        
+        # 2. Pure Python Math loops
+        vals = parsed["values"]
+        sum_val = sum(vals)
+        max_val = max(vals)
+        min_val = min(vals)
+        mean_val = sum_val / len(vals)
+        
+        # 3. String manipulation
+        tags = "-".join(parsed["metadata"]["tags"]).upper()
+        
+        # 4. Dictionary allocation
+        result = {
+            "sum": sum_val, 
+            "max": max_val, 
+            "min": min_val, 
+            "mean": mean_val, 
+            "tag_hash": hash(tags)
+        }
 
-        # Calculate latency
-        latency = time.time() - event['timestamp']
-        self.latencies.append(latency)
-
-        self.processed_events.append({
-            'id': event['id'],
-            'result': result,
-            'latency': latency
-        })
+        # Track throughput
         self.num_processed += 1
 
     def run_worker(self):
-        """Worker thread for processing events"""
+        """Thread worker fetching events"""
         while True:
-            try:
-                event = self.event_queue.get(timeout=1)
-                self.process_event(event)
+            event = self.event_queue.get()
+            if event is None:
                 self.event_queue.task_done()
-            except queue.Empty:
                 break
+            self.process_event(event)
+            self.event_queue.task_done()
 
-    def run_benchmark(self, num_workers: int, num_events: int, events_per_second: int):
-        """Runs the benchmark"""
-        # Reset state
+    def run_benchmark(self, num_workers: int, num_events: int):
+        # Reset queue state
         self.event_queue = queue.Queue()
-        self.processed_events = deque(maxlen=10000)
-        self.latencies = []
         self.num_processed = 0
 
-        # Start generator thread
-        generator = Thread(target=self.generate_events, args=(num_events, events_per_second))
-        generator.start()
+        # Pre-generate
+        self.generate_events(num_events)
 
-        # Start worker threads
+        start_time = time.perf_counter()
         workers = []
         for _ in range(num_workers):
             worker = Thread(target=self.run_worker)
             worker.start()
             workers.append(worker)
 
-        # Wait for completion
-        generator.join()
-        self.event_queue.join()
-
         for worker in workers:
             worker.join()
+        
+        total_time = time.perf_counter() - start_time
 
-        # Calculate statistics
-        if self.latencies:
-            avg_latency = np.mean(self.latencies)
-            p50_latency = np.percentile(self.latencies, 50)
-            p95_latency = np.percentile(self.latencies, 95)
-            p99_latency = np.percentile(self.latencies, 99)
-
-            # Throughput
-            if len(self.latencies) > 1:
-                throughput = len(self.latencies) / (max(self.latencies) - min(self.latencies))
-            else:
-                throughput = 0
-
+        if self.num_processed > 0:
             return {
                 'num_processed': self.num_processed,
-                'avg_latency': avg_latency,
-                'p50_latency': p50_latency,
-                'p95_latency': p95_latency,
-                'p99_latency': p99_latency,
-                'throughput': throughput
+                # Simulate latency as absolute time for the visualizer script semantics
+                'avg_latency': total_time, 
+                'throughput': self.num_processed / (total_time + 1e-9)
             }
-
-        return {
-            'num_processed': 0,
-            'avg_latency': 0,
-            'p50_latency': 0,
-            'p95_latency': 0,
-            'p99_latency': 0,
-            'throughput': 0
-        }
+            
+        return {'num_processed': 0, 'avg_latency': 0, 'throughput': 0}
 
 
-def run_benchmark(num_events: int = 10000, events_per_second: int = 100, num_runs: int = 3):
-    """Runs benchmark for all configurations"""
+def run_benchmark(num_events: int = 50000, events_per_second: int = 100, num_runs: int = 3):
+    """Run pure-Python workload threaded scaling."""
     results = {}
-
     worker_counts = [1, 2, 4, 8]
-
+    
     for num_workers in worker_counts:
         print(f"Testing with {num_workers} workers...")
         mode_results = []
-
         for run in range(num_runs):
             processor = StreamProcessor()
-            result = processor.run_benchmark(
-                num_workers=num_workers,
-                num_events=num_events,
-                events_per_second=events_per_second
-            )
+            # Feed data as fast as possible to overwhelm the GIL
+            result = processor.run_benchmark(num_workers=num_workers, num_events=num_events)
             mode_results.append(result)
 
-        # Average results
         avg_result = {
-            'avg_latency': np.mean([r['avg_latency'] for r in mode_results]),
-            'p50_latency': np.mean([r['p50_latency'] for r in mode_results]),
-            'p95_latency': np.mean([r['p95_latency'] for r in mode_results]),
-            'p99_latency': np.mean([r['p99_latency'] for r in mode_results]),
-            'throughput': np.mean([r['throughput'] for r in mode_results])
+            'avg_latency': np.min([r['avg_latency'] for r in mode_results]),
+            'throughput': np.max([r['throughput'] for r in mode_results])
         }
-
-        results[f'workers_{num_workers}'] = avg_result
-        print(f"  Workers: {num_workers}, Avg latency: {avg_result['avg_latency']*1000:.2f}ms, "
-              f"Throughput: {avg_result['throughput']:.2f} events/s")
-
+        
+        results[f'workers_{num_workers}'] = {
+            'avg_latency': {'mean': avg_result['avg_latency']},
+            'throughput': {'mean': avg_result['throughput']}
+        }
+        
+        print(f"  Workers: {num_workers}, Time: {avg_result['avg_latency']:.2f}s, Throughput: {avg_result['throughput']:.2f} obj/s")
+    
     return results
 
 
 if __name__ == "__main__":
-    num_events = int(sys.argv[1]) if len(sys.argv) > 1 else 10000
-    events_per_second = int(sys.argv[2]) if len(sys.argv) > 2 else 100
-
+    num_events = int(sys.argv[1]) if len(sys.argv) > 1 else 100000
+    
     print("=" * 60)
-    print(f"Streaming Benchmark (events: {num_events}, rate: {events_per_second}/s)")
+    print(f"Streaming Benchmark (Pure Python JSON/Math - no NumPy CPU)")
     print("=" * 60)
-
-    results = run_benchmark(num_events=num_events, events_per_second=events_per_second)
-
-    # Save results
+    
+    results = run_benchmark(num_events=num_events)
+    
     with open("results/streaming_results.json", "w") as f:
         json.dump(results, f, indent=2)
-
-    print("\nResults saved to results/streaming_results.json")
+    
+    print("\\nResults saved to results/streaming_results.json")

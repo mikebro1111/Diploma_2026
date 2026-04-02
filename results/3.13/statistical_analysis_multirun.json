@@ -1,0 +1,282 @@
+{
+  "Data Preprocessing_multiprocessing_2": {
+    "gil_mean": 2.981139665993396,
+    "nogil_mean": 3.750784999981988,
+    "speedup": 0.7948041985898184,
+    "p_value": 0.22389041647936997,
+    "significant": false
+  },
+  "Data Preprocessing_multiprocessing_4": {
+    "gil_mean": 3.6383957079960965,
+    "nogil_mean": 3.4605923339840956,
+    "speedup": 1.0513794624885215,
+    "p_value": 0.37023379209159624,
+    "significant": false
+  },
+  "Data Preprocessing_multiprocessing_8": {
+    "gil_mean": 3.854026042041369,
+    "nogil_mean": 4.5532934999791905,
+    "speedup": 0.846426008351753,
+    "p_value": 0.48992438685004636,
+    "significant": false
+  },
+  "Data Preprocessing_sequential": {
+    "gil_mean": 1.6904793750145473,
+    "nogil_mean": 1.671419624995906,
+    "speedup": 1.0114033302790064,
+    "p_value": 0.22232415680345166,
+    "significant": false
+  },
+  "Data Preprocessing_threading_2": {
+    "gil_mean": 1.16080187499756,
+    "nogil_mean": 1.1671618329710327,
+    "speedup": 0.9945509201947742,
+    "p_value": 0.6780150351527626,
+    "significant": false
+  },
+  "Data Preprocessing_threading_4": {
+    "gil_mean": 0.7852478749700822,
+    "nogil_mean": 0.8091964169871062,
+    "speedup": 0.970404537743516,
+    "p_value": 0.4234043652927434,
+    "significant": false
+  },
+  "Data Preprocessing_threading_8": {
+    "gil_mean": 0.7393142920336686,
+    "nogil_mean": 1.278510832984466,
+    "speedup": 0.5782620475008922,
+    "p_value": 0.6034373847820811,
+    "significant": false
+  },
+  "Image Processing_multiprocessing_2": {
+    "gil_mean": 13.549279416969512,
+    "nogil_mean": 14.15325287496671,
+    "speedup": 0.9573261734717208,
+    "p_value": 0.9106541669712009,
+    "significant": false
+  },
+  "Image Processing_multiprocessing_4": {
+    "gil_mean": 10.45799274998717,
+    "nogil_mean": 14.389172499999404,
+    "speedup": 0.7267959814914724,
+    "p_value": 5.7125597687498546e-05,
+    "significant": true
+  },
+  "Image Processing_multiprocessing_8": {
+    "gil_mean": 8.027965041983407,
+    "nogil_mean": 13.88217687496217,
+    "speedup": 0.5782929517677164,
+    "p_value": 7.361358957821892e-05,
+    "significant": true
+  },
+  "Image Processing_sequential": {
+    "gil_mean": 22.470709790999535,
+    "nogil_mean": 23.159949416003656,
+    "speedup": 0.9702400202770801,
+    "p_value": 0.9265502413757354,
+    "significant": false
+  },
+  "Image Processing_threading_2": {
+    "gil_mean": 13.386078583018389,
+    "nogil_mean": 11.854390124964993,
+    "speedup": 1.1292085414691815,
+    "p_value": 0.09148712140273486,
+    "significant": false
+  },
+  "Image Processing_threading_4": {
+    "gil_mean": 12.000034875003621,
+    "nogil_mean": 13.214548874995671,
+    "speedup": 0.9080926627552053,
+    "p_value": 0.02835708975771349,
+    "significant": true
+  },
+  "Image Processing_threading_8": {
+    "gil_mean": 9.81365475000348,
+    "nogil_mean": 13.034320541017223,
+    "speedup": 0.7529088086426332,
+    "p_value": 0.016241885812585947,
+    "significant": true
+  },
+  "ML Training_linear_reg_loky_4": {
+    "gil_mean": 0.1800189589848742,
+    "nogil_mean": 0.18011195794679224,
+    "speedup": 0.9994836602578852,
+    "p_value": 0.6785883048521038,
+    "significant": false
+  },
+  "ML Training_linear_reg_loky_8": {
+    "gil_mean": 0.17877916700672358,
+    "nogil_mean": 0.18043320800643414,
+    "speedup": 0.9908329457865008,
+    "p_value": 0.378017805936144,
+    "significant": false
+  },
+  "ML Training_linear_reg_threading_4": {
+    "gil_mean": 0.18166670895880088,
+    "nogil_mean": 0.1832753749913536,
+    "speedup": 0.9912226831748203,
+    "p_value": 0.06387379127027328,
+    "significant": false
+  },
+  "ML Training_linear_reg_threading_8": {
+    "gil_mean": 0.1791325830272399,
+    "nogil_mean": 0.18059433298185468,
+    "speedup": 0.9919058924470147,
+    "p_value": 0.6089998712684125,
+    "significant": false
+  },
+  "ML Training_linear_regression_seq": {
+    "gil_mean": 0.18187954102177173,
+    "nogil_mean": 0.18344233301468194,
+    "speedup": 0.9914807451081363,
+    "p_value": 0.6518891226700918,
+    "significant": false
+  },
+  "ML Training_random_forest_loky_8": {
+    "gil_mean": 37.63239483401412,
+    "nogil_mean": 41.42481354199117,
+    "speedup": 0.9084505545418381,
+    "p_value": 0.4338559115945224,
+    "significant": false
+  },
+  "ML Training_random_forest_seq": {
+    "gil_mean": 137.47292616596678,
+    "nogil_mean": 139.07955116598168,
+    "speedup": 0.9884481580034904,
+    "p_value": 0.004254127408980693,
+    "significant": true
+  },
+  "ML Training_random_forest_threading_8": {
+    "gil_mean": 36.118802374985535,
+    "nogil_mean": 35.05265379202319,
+    "speedup": 1.0304156309901125,
+    "p_value": 0.9552061123090649,
+    "significant": false
+  },
+  "Streaming_workers_1: avg_latency": {
+    "gil_mean": 9.167236208973918,
+    "nogil_mean": 10.738491625001188,
+    "speedup": 0.8536800631879157,
+    "p_value": 1.0,
+    "significant": false
+  },
+  "Streaming_workers_1: throughput": {
+    "gil_mean": 5454.20657379813,
+    "nogil_mean": 4656.147412634251,
+    "speedup": 1.171399032384237,
+    "p_value": 1.0,
+    "significant": false
+  },
+  "Streaming_workers_2: avg_latency": {
+    "gil_mean": 9.167932000011206,
+    "nogil_mean": 5.331227291957475,
+    "speedup": 1.7196663165799861,
+    "p_value": 1.0,
+    "significant": false
+  },
+  "Streaming_workers_2: throughput": {
+    "gil_mean": 5453.792632240847,
+    "nogil_mean": 9378.328338401012,
+    "speedup": 0.581531423879611,
+    "p_value": 1.0,
+    "significant": false
+  },
+  "Streaming_workers_4: avg_latency": {
+    "gil_mean": 9.505703416012693,
+    "nogil_mean": 2.6922240830026567,
+    "speedup": 3.5307994888044067,
+    "p_value": 1.0,
+    "significant": false
+  },
+  "Streaming_workers_4: throughput": {
+    "gil_mean": 5260.000002789192,
+    "nogil_mean": 18561.604993037676,
+    "speedup": 0.28338066696076014,
+    "p_value": 1.0,
+    "significant": false
+  },
+  "Streaming_workers_8: avg_latency": {
+    "gil_mean": 9.504337916034274,
+    "nogil_mean": 1.7698789170244709,
+    "speedup": 5.370049795278094,
+    "p_value": 1.0,
+    "significant": false
+  },
+  "Streaming_workers_8: throughput": {
+    "gil_mean": 5260.755713492346,
+    "nogil_mean": 26910.31545432617,
+    "speedup": 0.19549216070771158,
+    "p_value": 1.0,
+    "significant": false
+  },
+  "SIMD Vectorization_matrix: elementwise": {
+    "gil_mean": 0.011306624975986779,
+    "nogil_mean": 0.020965792005881667,
+    "speedup": 0.5392891894002793,
+    "p_value": 1.0,
+    "significant": false
+  },
+  "SIMD Vectorization_matrix: matmul": {
+    "gil_mean": 0.011306166998110712,
+    "nogil_mean": 0.015457707981113344,
+    "speedup": 0.7314258369950383,
+    "p_value": 1.0,
+    "significant": false
+  },
+  "SIMD Vectorization_matrix: reductions": {
+    "gil_mean": 0.0020183329470455647,
+    "nogil_mean": 0.0012494580005295575,
+    "speedup": 1.6153667799879108,
+    "p_value": 1.0,
+    "significant": false
+  },
+  "SIMD Vectorization_sequential: numpy": {
+    "gil_mean": 0.779485790990293,
+    "nogil_mean": 0.08426620904356241,
+    "speedup": 9.250277185097156,
+    "p_value": 1.0,
+    "significant": false
+  },
+  "SIMD Vectorization_sequential: numpy_complex": {
+    "gil_mean": 1.077990707999561,
+    "nogil_mean": 0.8023946660105139,
+    "speedup": 1.3434669417224614,
+    "p_value": 1.0,
+    "significant": false
+  },
+  "SIMD Vectorization_sequential: python": {
+    "gil_mean": 0.0011780000058934093,
+    "nogil_mean": 0.0018093749531544745,
+    "speedup": 0.6510535607004382,
+    "p_value": 1.0,
+    "significant": false
+  },
+  "SIMD Vectorization_speedup_numpy_vs_python": {
+    "gil_mean": 0.0015112526995480267,
+    "nogil_mean": 0.021472129501151484,
+    "speedup": 0.07038205965863716,
+    "p_value": 1.0,
+    "significant": false
+  },
+  "SIMD Vectorization_threaded: numpy_threaded_2": {
+    "gil_mean": 0.04760187497595325,
+    "nogil_mean": 0.05919449997600168,
+    "speedup": 0.8041604371225664,
+    "p_value": 1.0,
+    "significant": false
+  },
+  "SIMD Vectorization_threaded: numpy_threaded_4": {
+    "gil_mean": 0.03900666697882116,
+    "nogil_mean": 0.02887741703307256,
+    "speedup": 1.3507671733295201,
+    "p_value": 1.0,
+    "significant": false
+  },
+  "SIMD Vectorization_threaded: numpy_threaded_8": {
+    "gil_mean": 0.03595541696995497,
+    "nogil_mean": 0.03066133300308138,
+    "speedup": 1.1726632030754027,
+    "p_value": 1.0,
+    "significant": false
+  }
+}
