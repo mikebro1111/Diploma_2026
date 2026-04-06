@@ -211,8 +211,9 @@ def run_simd_benchmark(array_size: int = 10_000_000, num_runs: int = 3):
 
 if __name__ == "__main__":
     array_size = int(sys.argv[1]) if len(sys.argv) > 1 else 10_000_000
+    num_runs = int(sys.argv[2]) if len(sys.argv) > 2 else 3
 
-    results = run_simd_benchmark(array_size=array_size)
+    results = run_simd_benchmark(array_size=array_size, num_runs=num_runs)
 
     # Save results
     with open("results/simd_results.json", "w") as f:

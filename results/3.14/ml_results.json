@@ -1,0 +1,50 @@
+{
+  "linear_regression_seq": {
+    "avg_time": 0.19018795806914568,
+    "all_times": [
+      0.19018795806914568
+    ]
+  },
+  "linear_reg_threading_4": {
+    "avg_time": 0.20341441698838025,
+    "all_times": [
+      0.20341441698838025
+    ]
+  },
+  "linear_reg_threading_8": {
+    "avg_time": 0.19629650004208088,
+    "all_times": [
+      0.19629650004208088
+    ]
+  },
+  "linear_reg_loky_4": {
+    "avg_time": 0.2417123329360038,
+    "all_times": [
+      0.2417123329360038
+    ]
+  },
+  "linear_reg_loky_8": {
+    "avg_time": 0.2765888749854639,
+    "all_times": [
+      0.2765888749854639
+    ]
+  },
+  "random_forest_seq": {
+    "avg_time": 143.46735283301678,
+    "all_times": [
+      143.46735283301678
+    ]
+  },
+  "random_forest_threading_8": {
+    "avg_time": 42.74396174994763,
+    "all_times": [
+      42.74396174994763
+    ]
+  },
+  "random_forest_loky_8": {
+    "avg_time": 62.57335399999283,
+    "all_times": [
+      62.57335399999283
+    ]
+  }
+}

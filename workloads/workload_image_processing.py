@@ -131,8 +131,8 @@ def run_benchmark(input_dir: str, output_dir: str, num_runs: int = 3):
             import shutil
             out = Path(output_dir)
             if out.exists():
-                shutil.rmtree(out)
-            out.mkdir(exist_ok=True)
+                shutil.rmtree(out, ignore_errors=True)
+            out.mkdir(exist_ok=True, parents=True)
 
             start = time.perf_counter()
             mode_func()
@@ -152,12 +152,13 @@ def run_benchmark(input_dir: str, output_dir: str, num_runs: int = 3):
 if __name__ == "__main__":
     input_dir  = sys.argv[1] if len(sys.argv) > 1 else "./images_input"
     output_dir = sys.argv[2] if len(sys.argv) > 2 else "./images_output"
+    num_runs   = int(sys.argv[3]) if len(sys.argv) > 3 else 3
 
     print("=" * 60)
     print("Image Processing Benchmark")
     print("=" * 60)
 
-    results = run_benchmark(input_dir, output_dir)
+    results = run_benchmark(input_dir, output_dir, num_runs=num_runs)
 
     with open("results/image_processing_results.json", "w") as f:
         json.dump(results, f, indent=2)

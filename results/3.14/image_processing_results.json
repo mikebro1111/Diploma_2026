@@ -1,0 +1,44 @@
+{
+  "sequential": {
+    "avg_time": 28.3947827500524,
+    "all_times": [
+      28.3947827500524
+    ]
+  },
+  "threading_2": {
+    "avg_time": 18.700544124934822,
+    "all_times": [
+      18.700544124934822
+    ]
+  },
+  "threading_4": {
+    "avg_time": 16.903153000050224,
+    "all_times": [
+      16.903153000050224
+    ]
+  },
+  "threading_8": {
+    "avg_time": 10.710488583077677,
+    "all_times": [
+      10.710488583077677
+    ]
+  },
+  "multiprocessing_2": {
+    "avg_time": 21.568582625011913,
+    "all_times": [
+      21.568582625011913
+    ]
+  },
+  "multiprocessing_4": {
+    "avg_time": 12.77041954093147,
+    "all_times": [
+      12.77041954093147
+    ]
+  },
+  "multiprocessing_8": {
+    "avg_time": 9.522407084004954,
+    "all_times": [
+      9.522407084004954
+    ]
+  }
+}

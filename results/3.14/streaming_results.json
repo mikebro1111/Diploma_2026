@@ -1,0 +1,34 @@
+{
+  "workers_1": {
+    "avg_latency": {
+      "mean": 20.67027354205493
+    },
+    "throughput": {
+      "mean": 24189.326713965842
+    }
+  },
+  "workers_2": {
+    "avg_latency": {
+      "mean": 10.793006666004658
+    },
+    "throughput": {
+      "mean": 46310.82101783939
+    }
+  },
+  "workers_4": {
+    "avg_latency": {
+      "mean": 9.199839249951765
+    },
+    "throughput": {
+      "mean": 54034.531086896095
+    }
+  },
+  "workers_8": {
+    "avg_latency": {
+      "mean": 8.229190500103869
+    },
+    "throughput": {
+      "mean": 59758.85476633869
+    }
+  }
+}

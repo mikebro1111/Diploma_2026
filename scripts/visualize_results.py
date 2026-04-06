@@ -10,14 +10,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy import stats
 from pathlib import Path
-import json
-import numpy as np
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import seaborn as sns
-from scipy import stats
-from pathlib import Path
 import sys
 
 TARGET_DIR = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("results/3.13")
@@ -116,10 +108,11 @@ def plot_01_overall(data):
                     xytext=(0, 5), textcoords="offset points", ha='center', fontsize=8)
 
     ax.set_xlabel('Workload')
-    ax.set_ylabel('Wall Time (seconds) ± std')
-    ax.set_title('Overall Performance: GIL vs Free-threaded\n(5 runs, error bars = 1σ)')
+    ax.set_ylabel('Wall Time (seconds) [Min + Tail]')
+    ax.set_title(f'Overall Performance: GIL vs Free-threaded\n(Min time, error bars = tail length)')
     ax.set_xticks(x)
     ax.set_xticklabels(names, rotation=15, ha='right')
+    ax.set_ylim(bottom=0)
     ax.legend()
     ax.grid(axis='y', alpha=0.3)
 
@@ -156,7 +149,8 @@ def plot_02_data_preprocessing(data):
 
     ax1.set_xlabel('Thread Count')
     ax1.set_ylabel('Execution Time (min\n+ tail)')
-    ax1.set_title('Data Preprocessing: Execution Time')
+    ax1.set_title(f'Data Prep: Execution Time\n({wl.get("params", "")})')
+    ax1.set_ylim(bottom=0)
     ax1.legend()
     ax1.grid(True, alpha=0.3)
 
@@ -164,6 +158,7 @@ def plot_02_data_preprocessing(data):
     ax2.set_xlabel('Thread Count')
     ax2.set_ylabel('Speedup (vs Sequential)')
     ax2.set_title('Data Preprocessing: Speedup')
+    ax2.set_ylim(bottom=0)
     ax2.legend()
     ax2.grid(True, alpha=0.3)
 
@@ -201,7 +196,8 @@ def plot_03_image_processing(data):
 
     ax1.set_xlabel('Thread Count')
     ax1.set_ylabel('Execution Time (min\n+ tail)')
-    ax1.set_title('Image Processing: Execution Time')
+    ax1.set_title(f'Image Proc: Execution Time\n({wl.get("params", "")})')
+    ax1.set_ylim(bottom=0)
     ax1.legend()
     ax1.grid(True, alpha=0.3)
 
@@ -209,6 +205,7 @@ def plot_03_image_processing(data):
     ax2.set_xlabel('Thread Count')
     ax2.set_ylabel('Speedup (vs Sequential)')
     ax2.set_title('Image Processing: Speedup')
+    ax2.set_ylim(bottom=0)
     ax2.legend()
     ax2.grid(True, alpha=0.3)
 
@@ -246,10 +243,11 @@ def plot_04_ml_training(data):
                 label=lbl, color=color, edgecolor='white', linewidth=0.5)
 
     ax1.set_xlabel('Algorithm')
-    ax1.set_ylabel('Training Time (seconds) ± σ')
-    ax1.set_title('ML Algorithm Training Time')
+    ax1.set_ylabel('Training Time (seconds) [Min + Tail]')
+    ax1.set_title(f'ML Training Time\n({wl.get("params", "")})')
     ax1.set_xticks(x)
     ax1.set_xticklabels(algo_labels)
+    ax1.set_ylim(bottom=0)
     ax1.legend()
     ax1.grid(axis='y', alpha=0.3)
 
@@ -269,7 +267,8 @@ def plot_04_ml_training(data):
     ax2.plot(thread_labels, [1, 4, 8], '--', alpha=0.3, color=IDEAL_COLOR, label='Ideal linear')
     ax2.set_xlabel('Thread Count')
     ax2.set_ylabel('Speedup (vs Sequential)')
-    ax2.set_title('Linear Regression: Threading Scaling')
+    ax2.set_title('Linear Regression: Scaling')
+    ax2.set_ylim(bottom=0)
     ax2.legend()
     ax2.grid(True, alpha=0.3)
 
@@ -311,7 +310,7 @@ def plot_05_boxplot(data):
 
         bp = ax.boxplot(
             [gil_times, nogil_times],
-            labels=['GIL', 'No-GIL'],
+            tick_labels=['GIL', 'No-GIL'],
             patch_artist=True,
             widths=0.5,
         )
@@ -391,13 +390,15 @@ def plot_05b_streaming(data):
 
     ax1.set_xlabel('Worker Count')
     ax1.set_ylabel('Average Latency (ms)')
-    ax1.set_title('Streaming: Average Event Latency')
+    ax1.set_title(f'Streaming: Event Latency\n({wl.get("params", "")})')
+    ax1.set_ylim(bottom=0)
     ax1.legend()
     ax1.grid(True, alpha=0.3)
 
     ax2.set_xlabel('Worker Count')
     ax2.set_ylabel('Throughput (events/second)')
     ax2.set_title('Streaming: Throughput')
+    ax2.set_ylim(bottom=0)
     ax2.legend()
     ax2.grid(True, alpha=0.3)
 
@@ -444,7 +445,8 @@ def plot_06_simd(data):
             ax1.set_xticklabels(methods, fontsize=8)
 
     ax1.set_ylabel('Execution Time (min\n+ tail)')
-    ax1.set_title('SIMD Sequential Methods')
+    ax1.set_title(f'SIMD Seq Methods\n({wl.get("params", "")})')
+    ax1.set_ylim(bottom=0)
     ax1.legend()
     ax1.grid(axis='y', alpha=0.3)
 
@@ -460,7 +462,8 @@ def plot_06_simd(data):
         for tc in [2, 4, 8]:
             key = f"numpy_threaded_{tc}"
             if key in threaded and isinstance(threaded[key], dict):
-                times.append(threaded[key].get("mean", 0))
+                # Search for 'min_time' if available, otherwise 'mean'
+                times.append(threaded[key].get("min_time") or threaded[key].get("mean", 0))
             else:
                 times.append(0)
 
@@ -470,7 +473,8 @@ def plot_06_simd(data):
 
     ax2.set_xlabel('Thread Count')
     ax2.set_ylabel('Execution Time (seconds)')
-    ax2.set_title('NumPy Threaded: GIL vs No-GIL')
+    ax2.set_title('NumPy Threaded scaling')
+    ax2.set_ylim(bottom=0)
     ax2.legend()
     ax2.grid(True, alpha=0.3)
 

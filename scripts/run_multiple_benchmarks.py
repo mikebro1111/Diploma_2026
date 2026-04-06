@@ -248,7 +248,8 @@ WORKLOADS = [
     {
         "name": "Data Preprocessing",
         "script": "workloads/workload_data_preprocessing.py",
-        "args": ["5000000"],
+        "args": ["10000000"],
+        "params": "10M rows",
         "result_file": "data_preprocessing_results.json",
         "timeout": 3600,
     },
@@ -256,6 +257,7 @@ WORKLOADS = [
         "name": "Image Processing",
         "script": "workloads/workload_image_processing.py",
         "args": ["images_input", "images_output"],
+        "params": "10K images",
         "result_file": "image_processing_results.json",
         "timeout": 7200,
     },
@@ -263,20 +265,23 @@ WORKLOADS = [
         "name": "ML Training",
         "script": "workloads/workload_ml.py",
         "args": ["500000"],
+        "params": "500K samples",
         "result_file": "ml_results.json",
         "timeout": 7200,
     },
     {
         "name": "Streaming",
         "script": "workloads/workload_streaming.py",
-        "args": ["50000", "100000"],
+        "args": ["1000000"],
+        "params": "1M events",
         "result_file": "streaming_results.json",
         "timeout": 1800,
     },
     {
         "name": "SIMD Vectorization",
         "script": "workloads/workload_simd.py",
-        "args": ["50000000"],
+        "args": ["100000000"],
+        "params": "100M elements",
         "result_file": "simd_results.json",
         "timeout": 1200,
     },
@@ -287,8 +292,7 @@ WORKLOADS = [
 def run_suite(version_str, gil_path, nogil_path, num_iterations):
     print("=" * 70)
     print(f"FREE-THREADED PYTHON {version_str} — MULTI-RUN BENCHMARK SUITE")
-    print(f"Iterations: {num_iterations} (each workload does 3 internal runs)")
-    print(f"Total measurements per mode: up to {num_iterations * 2}")
+    print(f"Iterations: {num_iterations}")
     print(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 70)
 
@@ -327,11 +331,12 @@ def run_suite(version_str, gil_path, nogil_path, num_iterations):
         result_file = RESULTS_DIR / wl_def["result_file"]
 
         print(f"\n{'='*70}")
-        print(f"WORKLOAD: {wl_name}")
+        print(f"WORKLOAD: {wl_name} ({wl_def['params']})")
         print(f"{'='*70}")
 
         wl_result = {
             "name": wl_name,
+            "params": wl_def["params"],
             "script": wl_def["script"],
             "gil": {"wall_times": [], "run_details": [], "resource_samples": []},
             "nogil": {"wall_times": [], "run_details": [], "resource_samples": []},
@@ -351,7 +356,10 @@ def run_suite(version_str, gil_path, nogil_path, num_iterations):
 
                 print(f"    {progress} Run {i+1}/{num_iterations}...", end=" ", flush=True)
 
-                run_out = run_single_workload(python_path, wl_def["script"], wl_def["args"], timeout=wl_def["timeout"])
+                # Force each script to do 1 run to have independent iterations
+                # Most scripts take num_runs as the last argument if provided
+                run_args = wl_def["args"] + ["1"] 
+                run_out = run_single_workload(python_path, wl_def["script"], run_args, timeout=wl_def["timeout"])
 
                 wl_result[variant]["wall_times"].append(run_out["wall_time"])
                 wl_result[variant]["resource_samples"].append(run_out.get("resources", {}))
@@ -370,7 +378,7 @@ def run_suite(version_str, gil_path, nogil_path, num_iterations):
 
             # Summary
             wall_arr = np.array(wl_result[variant]["wall_times"])
-            print(f"  {label} summary: mean={np.mean(wall_arr):.2f}s, std={np.std(wall_arr, ddof=1):.2f}s, min={np.min(wall_arr):.2f}s, max={np.max(wall_arr):.2f}s")
+            print(f"  {label} summary: min={np.min(wall_arr):.4f}s, mean={np.mean(wall_arr):.4f}s, max={np.max(wall_arr):.4f}s, median={np.median(wall_arr):.4f}s")
 
         for variant in ["gil", "nogil"]:
             runs = wl_result[variant]["run_details"]
@@ -378,9 +386,12 @@ def run_suite(version_str, gil_path, nogil_path, num_iterations):
             
             wt = np.array(wl_result[variant]["wall_times"])
             wl_result[variant]["wall_stats"] = {
-                "mean": float(np.mean(wt)), "std": float(np.std(wt, ddof=1)),
-                "min": float(np.min(wt)), "max": float(np.max(wt)),
-                "median": float(np.median(wt)), "n": len(wt),
+                "min": float(np.min(wt)),
+                "mean": float(np.mean(wt)),
+                "max": float(np.max(wt)),
+                "median": float(np.median(wt)),
+                "std": float(np.std(wt, ddof=1)),
+                "n": len(wt),
             }
 
         master["workloads"][wl_name] = wl_result
@@ -389,14 +400,21 @@ def run_suite(version_str, gil_path, nogil_path, num_iterations):
     with open(master_file, "w") as f:
         json.dump(master, f, indent=2)
 
+    # Copy individual workload results to the version-specific directory
+    for wl_def in WORKLOADS:
+        src = RESULTS_DIR / wl_def["result_file"]
+        if src.exists():
+            import shutil
+            shutil.copy(src, out_dir / wl_def["result_file"])
+
     print(f"\n\n{'='*70}")
     print(f"{version_str} BENCHMARK COMPLETE")
-    print(f"Results: {master_file}")
+    print(f"Results: {master_file} and individual JSONs in {out_dir}")
     print(f"{'='*70}")
 
 
 def main():
-    num_iterations = int(sys.argv[1]) if len(sys.argv) > 1 else 50
+    num_iterations = int(sys.argv[1]) if len(sys.argv) > 1 else 20
     version_filter = sys.argv[2] if len(sys.argv) > 2 else None
 
     # Run 3.13 comparison

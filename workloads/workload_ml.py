@@ -78,12 +78,13 @@ def run_benchmark(n_samples: int = 1_000_000, n_features: int = 20, num_runs: in
 
 if __name__ == "__main__":
     n_samples = int(sys.argv[1]) if len(sys.argv) > 1 else 1_000_000
+    num_runs = int(sys.argv[2]) if len(sys.argv) > 2 else 3
 
     print("=" * 60)
     print(f"ML Benchmark (Native Joblib backends: Threading vs Loky)")
     print("=" * 60)
 
-    results = run_benchmark(n_samples=n_samples)
+    results = run_benchmark(n_samples=n_samples, num_runs=num_runs)
 
     out = Path("results/ml_results.json")
     out.parent.mkdir(exist_ok=True)

@@ -7,7 +7,7 @@ import sys
 import numpy as np
 
 
-def _generate_json_payload(size=500):
+def _generate_json_payload(size=100):
     """Generates a complex dictionary to simulate an API event payload."""
     return {
         "id": random.randint(1, 100000),
@@ -139,12 +139,13 @@ def run_benchmark(num_events: int = 50000, events_per_second: int = 100, num_run
 
 if __name__ == "__main__":
     num_events = int(sys.argv[1]) if len(sys.argv) > 1 else 100000
+    num_runs = int(sys.argv[2]) if len(sys.argv) > 2 else 3
     
     print("=" * 60)
     print(f"Streaming Benchmark (Pure Python JSON/Math - no NumPy CPU)")
     print("=" * 60)
     
-    results = run_benchmark(num_events=num_events)
+    results = run_benchmark(num_events=num_events, num_runs=num_runs)
     
     with open("results/streaming_results.json", "w") as f:
         json.dump(results, f, indent=2)
