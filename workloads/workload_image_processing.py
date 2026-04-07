@@ -115,14 +115,22 @@ def run_benchmark(input_dir: str, output_dir: str, num_runs: int = 3):
     """Runs benchmark for all modes using the unified _process_one pipeline."""
     results = {}
 
+    # Pre-create one ImageProcessor to avoid re-scanning the directory in each lambda
+    processor = ImageProcessor(input_dir, output_dir)
+
     modes = [
-        ("sequential",        lambda: ImageProcessor(input_dir, output_dir).process_sequential()),
-        ("threading_2",       lambda: ImageProcessor(input_dir, output_dir).process_threading(2)),
-        ("threading_4",       lambda: ImageProcessor(input_dir, output_dir).process_threading(4)),
-        ("threading_8",       lambda: ImageProcessor(input_dir, output_dir).process_threading(8)),
-        ("multiprocessing_2", lambda: ImageProcessor(input_dir, output_dir).process_multiprocessing(2)),
-        ("multiprocessing_4", lambda: ImageProcessor(input_dir, output_dir).process_multiprocessing(4)),
-        ("multiprocessing_8", lambda: ImageProcessor(input_dir, output_dir).process_multiprocessing(8)),
+        ("sequential",       lambda: processor.process_sequential()),
+        # ("threading_1",       lambda: processor.process_threading(1)),
+        # ("threading_2",       lambda: processor.process_threading(2)),
+        # ("threading_3",       lambda: processor.process_threading(3)),
+        ("threading_4",       lambda: processor.process_threading(4)),
+        # ("threading_5",       lambda: processor.process_threading(5)),
+        # ("threading_6",       lambda: processor.process_threading(6)),
+        # ("threading_7",       lambda: processor.process_threading(7)),
+        ("threading_8",       lambda: processor.process_threading(8)),
+        # ("multiprocessing_2", lambda: processor.process_multiprocessing(2)),
+        # ("multiprocessing_4", lambda: processor.process_multiprocessing(4)),
+        # ("multiprocessing_8", lambda: processor.process_multiprocessing(8)),
     ]
 
     for mode_name, mode_func in modes:

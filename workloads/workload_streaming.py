@@ -112,28 +112,54 @@ def run_benchmark(num_events: int = 50000, events_per_second: int = 100, num_run
     """Run pure-Python workload threaded scaling."""
     results = {}
     worker_counts = [1, 2, 4, 8]
-    
+
+    # Pre-generate serialized event strings ONCE — isolate processing from generation
+    print(f"  Pre-generating {num_events:,} events...")
+    pregenerated = [
+        {"timestamp": 0.0, "raw": json.dumps(_generate_json_payload())}
+        for _ in range(num_events)
+    ]
+
     for num_workers in worker_counts:
         print(f"Testing with {num_workers} workers...")
         mode_results = []
         for run in range(num_runs):
             processor = StreamProcessor()
-            # Feed data as fast as possible to overwhelm the GIL
-            result = processor.run_benchmark(num_workers=num_workers, num_events=num_events)
-            mode_results.append(result)
+            # Fill queue from pre-generated events (no serialization overhead)
+            for ev in pregenerated:
+                processor.event_queue.put(ev)
+            # Add poison pills
+            for _ in range(64):
+                processor.event_queue.put(None)
+
+            start_time = time.perf_counter()
+            workers = []
+            for _ in range(num_workers):
+                worker = Thread(target=processor.run_worker)
+                worker.start()
+                workers.append(worker)
+            for worker in workers:
+                worker.join()
+            total_time = time.perf_counter() - start_time
+
+            mode_results.append({
+                'num_processed': processor.num_processed,
+                'avg_latency': total_time,
+                'throughput': processor.num_processed / (total_time + 1e-9)
+            })
 
         avg_result = {
-            'avg_latency': np.min([r['avg_latency'] for r in mode_results]),
-            'throughput': np.max([r['throughput'] for r in mode_results])
+            'avg_latency': float(np.min([r['avg_latency'] for r in mode_results])),
+            'throughput': float(np.max([r['throughput'] for r in mode_results]))
         }
-        
+
         results[f'workers_{num_workers}'] = {
             'avg_latency': {'mean': avg_result['avg_latency']},
             'throughput': {'mean': avg_result['throughput']}
         }
-        
+
         print(f"  Workers: {num_workers}, Time: {avg_result['avg_latency']:.2f}s, Throughput: {avg_result['throughput']:.2f} obj/s")
-    
+
     return results
 
 

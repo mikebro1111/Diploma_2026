@@ -143,12 +143,17 @@ def run_benchmark(num_rows: int = 10_000_000, num_cols: int = 8,
 
     modes = [
         ("sequential",        lambda: preprocessor.process_sequential()),
-        ("threading_2",       lambda: preprocessor.process_threading(2)),
+        # ("threading_1",       lambda: preprocessor.process_threading(1)),
+        # ("threading_2",       lambda: preprocessor.process_threading(2)),
+        # ("threading_3",       lambda: preprocessor.process_threading(3)),
         ("threading_4",       lambda: preprocessor.process_threading(4)),
+        # ("threading_5",       lambda: preprocessor.process_threading(5)),
+        # ("threading_6",       lambda: preprocessor.process_threading(6)),
+        # ("threading_7",       lambda: preprocessor.process_threading(7)),
         ("threading_8",       lambda: preprocessor.process_threading(8)),
-        ("multiprocessing_2", lambda: preprocessor.process_multiprocessing(2)),
-        ("multiprocessing_4", lambda: preprocessor.process_multiprocessing(4)),
-        ("multiprocessing_8", lambda: preprocessor.process_multiprocessing(8)),
+        # ("multiprocessing_2", lambda: DataPreprocessor(num_rows).process_multiprocessing(2)),
+        # ("multiprocessing_4", lambda: DataPreprocessor(num_rows).process_multiprocessing(4)),
+        # ("multiprocessing_8", lambda: DataPreprocessor(num_rows).process_multiprocessing(8)),
     ]
 
     for mode_name, mode_func in modes:

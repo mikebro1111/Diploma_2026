@@ -163,7 +163,7 @@ class SIMDBenchmark:
 
 
 def run_simd_benchmark(array_size: int = 10_000_000, num_runs: int = 3):
-    """Run SIMD benchmarks"""
+    """Run SIMD benchmarks with proper repetition for stable results."""
     results = {}
 
     print("=" * 60)
@@ -173,38 +173,75 @@ def run_simd_benchmark(array_size: int = 10_000_000, num_runs: int = 3):
 
     benchmark = SIMDBenchmark(array_size=array_size)
 
+    def measure(name, fn):
+        """Run fn num_runs times and return min time."""
+        times = []
+        for _ in range(num_runs):
+            t0 = time.perf_counter()
+            fn()
+            times.append(time.perf_counter() - t0)
+        return float(min(times))
+
     # Sequential benchmarks
     print("\n### Sequential Operations ###")
-    seq_results = benchmark.benchmark_sequential()
-    for name, time_taken in seq_results.items():
-        print(f"{name:20s}: {time_taken:.4f}s")
+    seq_results = {}
+
+    # NumPy vectorized
+    print("Testing NumPy add...")
+    seq_results['numpy'] = measure('numpy', lambda: benchmark.add_numpy(benchmark.a, benchmark.b))
+
+    # NumPy complex operation
+    print("Testing NumPy complex...")
+    seq_results['numpy_complex'] = measure('numpy_complex', lambda: benchmark.complex_numpy_operation(benchmark.a, benchmark.b))
+
+    # Numba if available
+    if NUMBA_AVAILABLE:
+        print("Testing Numba Serial...")
+        # warm up JIT
+        _ = benchmark.add_numba_serial(benchmark.a[:1000], benchmark.b[:1000])
+        seq_results['numba_serial'] = measure('numba_serial', lambda: benchmark.add_numba_serial(benchmark.a, benchmark.b))
+
+        print("Testing Numba Parallel...")
+        _ = benchmark.add_numba_parallel(benchmark.a[:1000], benchmark.b[:1000])
+        seq_results['numba_parallel'] = measure('numba_parallel', lambda: benchmark.add_numba_parallel(benchmark.a, benchmark.b))
+
+    for name, t in seq_results.items():
+        print(f"{name:20s}: {t:.4f}s")
     results['sequential'] = seq_results
 
     # Threading benchmarks
     print("\n### Threaded Operations ###")
-    thread_results = benchmark.benchmark_threading()
-    for name, time_taken in thread_results.items():
-        print(f"{name:20s}: {time_taken:.4f}s")
+    thread_results = {}
+    for num_threads in [2, 4, 8]:
+        print(f"Testing NumPy threaded ({num_threads} threads)...")
+        t = measure(f'numpy_threaded_{num_threads}', lambda nt=num_threads: benchmark.add_numpy_threaded(nt))
+        thread_results[f'numpy_threaded_{num_threads}'] = t
+        print(f"{'numpy_threaded_'+str(num_threads):20s}: {t:.4f}s")
     results['threaded'] = thread_results
 
     # Matrix operations
     print("\n### Matrix Operations ###")
-    matrix_results = benchmark.benchmark_matrix_operations()
-    for name, time_taken in matrix_results.items():
-        print(f"{name:20s}: {time_taken:.4f}s")
+    size = 1000
+    A = np.random.rand(size, size)
+    B = np.random.rand(size, size)
+    matrix_results = {
+        'matmul':      measure('matmul',      lambda: np.dot(A, B)),
+        'elementwise': measure('elementwise', lambda: A * B + A / (B + 1)),
+        'reductions':  measure('reductions',  lambda: (np.sum(A), np.mean(B))),
+    }
+    for name, t in matrix_results.items():
+        print(f"{name:20s}: {t:.4f}s")
     results['matrix'] = matrix_results
 
-    # Calculate speedups
+    # Speedups
     print("\n### Speedups ###")
-    if 'numpy' in seq_results and 'python' in seq_results:
-        speedup = seq_results['python'] / seq_results['numpy']
-        print(f"NumPy vs Python: {speedup:.2f}x")
-        results['speedup_numpy_vs_python'] = speedup
+    if 'numpy' in seq_results and 'numba_serial' in seq_results:
+        speedup = seq_results['numba_serial'] / seq_results['numpy']
+        print(f"NumPy vs Numba Serial: {speedup:.2f}x")
 
-    if NUMBA_AVAILABLE and 'numba_parallel' in seq_results:
-        if 'numba_serial' in seq_results:
-            speedup = seq_results['numba_serial'] / seq_results['numba_parallel']
-            print(f"Numba Parallel vs Serial: {speedup:.2f}x")
+    if NUMBA_AVAILABLE and 'numba_parallel' in seq_results and 'numba_serial' in seq_results:
+        speedup = seq_results['numba_serial'] / seq_results['numba_parallel']
+        print(f"Numba Parallel vs Serial: {speedup:.2f}x")
 
     return results
 

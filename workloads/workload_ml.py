@@ -28,50 +28,55 @@ def run_benchmark(n_samples: int = 1_000_000, n_features: int = 20, num_runs: in
     benchmark = MLBenchmark(n_samples=n_samples, n_features=n_features)
     results = {}
 
-    def measure(name, func, *args, **kwargs):
-        times = []
-        for _ in range(num_runs):
-            start = time.perf_counter()
-            func(*args, **kwargs)
-            times.append(time.perf_counter() - start)
-        
-        avg = float(np.mean(times))
-        results[name] = {"avg_time": avg, "all_times": times}
-        print(f"  {name:<30}: {avg:.4f}s")
 
     # -------------------------------------------------------------------------
     # 1. Linear Regression
     # -------------------------------------------------------------------------
-    def train_lr(n_jobs):
-        model = LinearRegression(n_jobs=n_jobs)
-        model.fit(benchmark.X_reg, benchmark.y_reg)
+    experiments = [
+        ("linear_regression_seq", LinearRegression(), 1, None),
+        # ("linear_reg_loky_4",     LinearRegression(), 4, 'loky'),
+        # ("linear_reg_loky_8",     LinearRegression(), 8, 'loky'),
+        # ("linear_reg_threading_2", LinearRegression(), 2, 'threading'),
+        # ("linear_reg_threading_3", LinearRegression(), 3, 'threading'),
+        ("linear_reg_threading_4", LinearRegression(), 4, 'threading'),
+        # ("linear_reg_threading_5", LinearRegression(), 5, 'threading'),
+        # ("linear_reg_threading_6", LinearRegression(), 6, 'threading'),
+        # ("linear_reg_threading_7", LinearRegression(), 7, 'threading'),
+        ("linear_reg_threading_8", LinearRegression(), 8, 'threading'),
+        ("random_forest_seq",      RandomForestClassifier(n_estimators=30, n_jobs=1), 1, None),
+        # ("random_forest_loky_8",   RandomForestClassifier(n_estimators=30, n_jobs=8), 8, 'loky'),
+        # ("random_forest_threading_2", RandomForestClassifier(n_estimators=30, n_jobs=2), 2, 'threading'),
+        # ("random_forest_threading_3", RandomForestClassifier(n_estimators=30, n_jobs=3), 3, 'threading'),
+        ("random_forest_threading_4", RandomForestClassifier(n_estimators=30, n_jobs=4), 4, 'threading'),
+        # ("random_forest_threading_5", RandomForestClassifier(n_estimators=30, n_jobs=5), 5, 'threading'),
+        # ("random_forest_threading_6", RandomForestClassifier(n_estimators=30, n_jobs=6), 6, 'threading'),
+        # ("random_forest_threading_7", RandomForestClassifier(n_estimators=30, n_jobs=7), 7, 'threading'),
+        ("random_forest_threading_8", RandomForestClassifier(n_estimators=30, n_jobs=8), 8, 'threading'),
+    ]
 
-    def train_lr_backend(n_jobs, backend):
-        with joblib.parallel_backend(backend, n_jobs=n_jobs):
-            model = LinearRegression(n_jobs=n_jobs)
-            model.fit(benchmark.X_reg, benchmark.y_reg)
-
-    measure("linear_regression_seq", train_lr, n_jobs=None)
-
-    # Note: Using backend='threading' reveals GIL bottlenecks in python code
-    measure("linear_reg_threading_4", train_lr_backend, 4, "threading")
-    measure("linear_reg_threading_8", train_lr_backend, 8, "threading")
-    
-    measure("linear_reg_loky_4", train_lr_backend, 4, "loky")
-    measure("linear_reg_loky_8", train_lr_backend, 8, "loky")
-
-    # -------------------------------------------------------------------------
-    # 2. Random Forest
-    # -------------------------------------------------------------------------
-    def train_rf(n_jobs, backend):
-        with joblib.parallel_backend(backend, n_jobs=n_jobs):
-            # Reduced estimators to keep benchmark time reasonable on large data
-            model = RandomForestClassifier(n_estimators=30, n_jobs=n_jobs, random_state=42)
-            model.fit(benchmark.X_clf, benchmark.y_clf)
-
-    measure("random_forest_seq", train_rf, n_jobs=None, backend="loky")
-    measure("random_forest_threading_8", train_rf, n_jobs=8, backend="threading")
-    measure("random_forest_loky_8", train_rf, n_jobs=8, backend="loky")
+    for name, model, n_jobs, backend in experiments:
+        times = []
+        for _ in range(num_runs):
+            if backend:
+                with joblib.parallel_backend(backend, n_jobs=n_jobs):
+                    start = time.perf_counter()
+                    if "regression" in name:
+                        model.fit(benchmark.X_reg, benchmark.y_reg)
+                    else:
+                        model.fit(benchmark.X_clf, benchmark.y_clf)
+                    times.append(time.perf_counter() - start)
+            else:
+                # Sequential or manual n_jobs (seq)
+                start = time.perf_counter()
+                if "regression" in name:
+                    model.fit(benchmark.X_reg, benchmark.y_reg)
+                else:
+                    model.fit(benchmark.X_clf, benchmark.y_clf)
+                times.append(time.perf_counter() - start)
+        
+        avg = float(np.mean(times))
+        results[name] = {"avg_time": avg, "all_times": times}
+        print(f"  {name:<30}: {avg:.4f}s")
 
     return results
 
