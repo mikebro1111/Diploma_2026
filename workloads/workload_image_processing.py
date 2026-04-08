@@ -111,7 +111,7 @@ class ImageProcessor:
 # ---------------------------------------------------------------------------
 # Benchmark runner
 # ---------------------------------------------------------------------------
-def run_benchmark(input_dir: str, output_dir: str, num_runs: int = 3):
+def run_benchmark(input_dir: str, output_dir: str, num_runs: int = 1):
     """Runs benchmark for all modes using the unified _process_one pipeline."""
     results = {}
 
@@ -121,7 +121,7 @@ def run_benchmark(input_dir: str, output_dir: str, num_runs: int = 3):
     modes = [
         ("sequential",       lambda: processor.process_sequential()),
         # ("threading_1",       lambda: processor.process_threading(1)),
-        # ("threading_2",       lambda: processor.process_threading(2)),
+        ("threading_2",       lambda: processor.process_threading(2)),
         # ("threading_3",       lambda: processor.process_threading(3)),
         ("threading_4",       lambda: processor.process_threading(4)),
         # ("threading_5",       lambda: processor.process_threading(5)),
@@ -160,7 +160,7 @@ def run_benchmark(input_dir: str, output_dir: str, num_runs: int = 3):
 if __name__ == "__main__":
     input_dir  = sys.argv[1] if len(sys.argv) > 1 else "./images_input"
     output_dir = sys.argv[2] if len(sys.argv) > 2 else "./images_output"
-    num_runs   = int(sys.argv[3]) if len(sys.argv) > 3 else 3
+    num_runs   = int(sys.argv[3]) if len(sys.argv) > 3 else 1
 
     print("=" * 60)
     print("Image Processing Benchmark")

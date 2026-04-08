@@ -22,7 +22,11 @@ def load_data() -> dict:
         print(f"❌ Not found: {f}")
         sys.exit(1)
     with open(f) as fh:
-        return json.load(fh)
+        data = json.load(fh)
+    # Define globally for plot titles
+    global n_runs
+    n_runs = data.get("metadata", {}).get("num_iterations", 20)
+    return data
 
 
 def setup_style():
@@ -61,15 +65,32 @@ def _get_times(wl, variant, mode):
 
 
 def _get_avg(wl, variant, mode):
-    """Get avg_time for a mode."""
+    """Get min_time for a mode (or mean for nested)."""
     d = _get_mode_data(wl, variant, mode)
-    return d.get("min_time", 0)
-
+    if "min_time" in d:
+        return d["min_time"]
+    if "avg_latency" in d: # Nested
+        lat = d["avg_latency"]
+        return lat.get("min_time") or lat.get("avg_time", 0)
+    if isinstance(d, dict):
+        # SIMD or other nested
+        for k, v in d.items():
+            if isinstance(v, dict) and "min_time" in v:
+                return v["min_time"]
+    return 0.0
 
 def _get_std(wl, variant, mode):
-    """Get std_time for a mode."""
+    """Get tail_length for a mode."""
     d = _get_mode_data(wl, variant, mode)
-    return d.get("tail_length", 0)
+    if "tail_length" in d:
+        return d["tail_length"]
+    if "avg_latency" in d:
+        return d["avg_latency"].get("tail_length", 0)
+    if isinstance(d, dict):
+        for k, v in d.items():
+            if isinstance(v, dict) and "tail_length" in v:
+                return v["tail_length"]
+    return 0.0
 
 
 # =============================================================================
@@ -127,42 +148,32 @@ def plot_01_overall(data):
 # =============================================================================
 def plot_02_data_preprocessing(data):
     wl = data["workloads"].get("Data Preprocessing")
-    if not wl:
-        return
+    if not wl: return
 
     modes = ["sequential", "threading_2", "threading_4", "threading_8"]
     labels = ["1 (seq)", "2", "4", "8"]
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
-
     for variant, color, lbl in [("gil", GIL_COLOR, "GIL"), ("nogil", NOGIL_COLOR, "No-GIL")]:
         times = [_get_avg(wl, variant, m) for m in modes]
         stds = [_get_std(wl, variant, m) for m in modes]
-
-        ax1.errorbar(labels, times, yerr=stds, marker='o', linewidth=2,
-                     markersize=8, label=lbl, color=color, capsize=4)
-
+        ax1.errorbar(labels, times, yerr=stds, marker='o', linewidth=2, markersize=8, label=lbl, color=color, capsize=4)
         if times[0] > 0:
             speedups = [times[0] / t if t > 0 else 0 for t in times]
-            ax2.plot(labels, speedups, marker='s', linewidth=2, markersize=8,
-                     label=lbl, color=color)
+            ax2.plot(labels, speedups, marker='s', linewidth=2, markersize=8, label=lbl, color=color)
 
     ax1.set_xlabel('Thread Count')
     ax1.set_ylabel('Execution Time (min\n+ tail)')
     ax1.set_title(f'Data Prep: Execution Time\n({wl.get("params", "")})')
     ax1.set_ylim(bottom=0)
-    ax1.legend()
-    ax1.grid(True, alpha=0.3)
+    ax1.legend(); ax1.grid(True, alpha=0.3)
 
     ax2.plot(labels, [1, 2, 4, 8], '--', alpha=0.3, color=IDEAL_COLOR, label='Ideal linear')
-    ax2.set_xlabel('Thread Count')
-    ax2.set_ylabel('Speedup (vs Sequential)')
+    ax2.set_xlabel('Thread Count'); ax2.set_ylabel('Speedup (vs Sequential)')
     ax2.set_title('Data Preprocessing: Speedup')
-    ax2.set_ylim(bottom=0)
-    ax2.legend()
-    ax2.grid(True, alpha=0.3)
+    ax2.set_ylim(bottom=0); ax2.legend(); ax2.grid(True, alpha=0.3)
 
-    plt.suptitle('Data Preprocessing Benchmark (N=15 measurements)', fontsize=14, y=1.02)
+    plt.suptitle(f'Data Preprocessing Benchmark (N={n_runs} measurements)', fontsize=14, y=1.02)
     plt.tight_layout()
     plt.savefig(CHARTS_DIR / "02_data_preprocessing.png")
     plt.close()
@@ -209,7 +220,7 @@ def plot_03_image_processing(data):
     ax2.legend()
     ax2.grid(True, alpha=0.3)
 
-    plt.suptitle('Image Processing Benchmark (N=15 measurements)', fontsize=14, y=1.02)
+    plt.suptitle(f'Image Processing Benchmark (N={n_runs} measurements)', fontsize=14, y=1.02)
     plt.tight_layout()
     plt.savefig(CHARTS_DIR / "03_image_processing.png")
     plt.close()
@@ -252,8 +263,8 @@ def plot_04_ml_training(data):
     ax1.grid(axis='y', alpha=0.3)
 
     # Threading scaling for linear regression
-    thread_modes = ["linear_regression_seq", "linear_reg_threading_4", "linear_reg_threading_8"]
-    thread_labels = ["1 (seq)", "4", "8"]
+    thread_modes = ["linear_regression_seq", "linear_reg_threading_2", "linear_reg_threading_4", "linear_reg_threading_8"]
+    thread_labels = ["1 (seq)", "2", "4", "8"]
 
     for variant, color, lbl in [("gil", GIL_COLOR, "GIL"), ("nogil", NOGIL_COLOR, "No-GIL")]:
         times = [_get_avg(wl, variant, m) for m in thread_modes]
@@ -264,7 +275,7 @@ def plot_04_ml_training(data):
             ax2.plot(thread_labels, speedups, marker='o', linewidth=2,
                      markersize=8, label=lbl, color=color)
 
-    ax2.plot(thread_labels, [1, 4, 8], '--', alpha=0.3, color=IDEAL_COLOR, label='Ideal linear')
+    ax2.plot(thread_labels, [1, 2, 4, 8], '--', alpha=0.3, color=IDEAL_COLOR, label='Ideal linear')
     ax2.set_xlabel('Thread Count')
     ax2.set_ylabel('Speedup (vs Sequential)')
     ax2.set_title('Linear Regression: Scaling')
@@ -272,7 +283,7 @@ def plot_04_ml_training(data):
     ax2.legend()
     ax2.grid(True, alpha=0.3)
 
-    plt.suptitle('ML Training Benchmark (N=15 measurements)', fontsize=14, y=1.02)
+    plt.suptitle(f'ML Training Benchmark (N={n_runs} measurements)', fontsize=14, y=1.02)
     plt.tight_layout()
     plt.savefig(CHARTS_DIR / "04_ml_training.png")
     plt.close()
@@ -361,22 +372,17 @@ def plot_05b_streaming(data):
         for wm in worker_modes:
             d = merged.get(wm, {})
             if isinstance(d, dict):
-                # Streaming results use nested dict with 'mean' key
-                avg_lat = d.get("avg_latency", {})
-                tp = d.get("throughput", {})
-                if isinstance(avg_lat, dict):
-                    latencies.append(avg_lat.get("mean", 0) * 1000)  # to ms
-                elif isinstance(avg_lat, (int, float)):
-                    latencies.append(avg_lat * 1000)
-                else:
-                    latencies.append(0)
+                # Streaming results use new nested dict structure
+                avg_lat_stats = d.get("avg_latency", {})
+                tp_stats = d.get("throughput", {})
+                
+                # Latency (using min_time if available, else avg_time)
+                lat_val = avg_lat_stats.get("min_time") or avg_lat_stats.get("avg_time", 0)
+                latencies.append(lat_val * 1000)  # to ms
 
-                if isinstance(tp, dict):
-                    throughputs.append(tp.get("mean", 0))
-                elif isinstance(tp, (int, float)):
-                    throughputs.append(tp)
-                else:
-                    throughputs.append(0)
+                # Throughput (using min_val if available, else avg_val)
+                tp_val = tp_stats.get("min_val") or tp_stats.get("avg_val", 0)
+                throughputs.append(tp_val)
             else:
                 latencies.append(0)
                 throughputs.append(0)
@@ -402,7 +408,7 @@ def plot_05b_streaming(data):
     ax2.legend()
     ax2.grid(True, alpha=0.3)
 
-    plt.suptitle('Streaming Benchmark', fontsize=14, y=1.02)
+    plt.suptitle(f'Streaming Benchmark (N={n_runs} measurements)', fontsize=14, y=1.02)
     plt.tight_layout()
     plt.savefig(CHARTS_DIR / "05_streaming.png")
     plt.close()
@@ -430,10 +436,13 @@ def plot_06_simd(data):
         means = []
         stds = []
         for k, v in seq.items():
-            if isinstance(v, dict) and "mean" in v:
-                methods.append(k.replace("_", "\n"))
-                means.append(v["mean"])
-                stds.append(v.get("std", 0))
+            if isinstance(v, dict):
+                # New format uses min_time
+                val = v.get("min_time") or v.get("avg_time", 0)
+                if val > 0:
+                    methods.append(k.replace("_", "\n"))
+                    means.append(val)
+                    stds.append(v.get("tail_length", 0))
 
         if methods:
             x = np.arange(len(methods))
@@ -462,8 +471,8 @@ def plot_06_simd(data):
         for tc in [2, 4, 8]:
             key = f"numpy_threaded_{tc}"
             if key in threaded and isinstance(threaded[key], dict):
-                # Search for 'min_time' if available, otherwise 'mean'
-                times.append(threaded[key].get("min_time") or threaded[key].get("mean", 0))
+                # New format uses min_time
+                times.append(threaded[key].get("min_time") or threaded[key].get("avg_time", 0))
             else:
                 times.append(0)
 

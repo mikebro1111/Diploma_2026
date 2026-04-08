@@ -136,7 +136,7 @@ class DataPreprocessor:
 # Benchmark runner
 # ---------------------------------------------------------------------------
 def run_benchmark(num_rows: int = 10_000_000, num_cols: int = 8,
-                  num_runs: int = 3) -> dict:
+                  num_runs: int = 1) -> dict:
     """Run all modes and return timing results."""
     preprocessor = DataPreprocessor(num_rows=num_rows, num_cols=num_cols)
     results      = {}
@@ -144,7 +144,7 @@ def run_benchmark(num_rows: int = 10_000_000, num_cols: int = 8,
     modes = [
         ("sequential",        lambda: preprocessor.process_sequential()),
         # ("threading_1",       lambda: preprocessor.process_threading(1)),
-        # ("threading_2",       lambda: preprocessor.process_threading(2)),
+        ("threading_2",       lambda: preprocessor.process_threading(2)),
         # ("threading_3",       lambda: preprocessor.process_threading(3)),
         ("threading_4",       lambda: preprocessor.process_threading(4)),
         # ("threading_5",       lambda: preprocessor.process_threading(5)),
@@ -178,19 +178,25 @@ def run_benchmark(num_rows: int = 10_000_000, num_cols: int = 8,
 # Entry point
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    num_rows = 3_000_000
+    num_rows = 10_000_000
+    num_runs = 1
     if len(sys.argv) > 1:
         try:
             num_rows = int(sys.argv[1])
         except ValueError:
-            pass   # ignore non-integer args (e.g. "auto" from run_multiple_benchmarks)
+            pass
+    if len(sys.argv) > 2:
+        try:
+            num_runs = int(sys.argv[2])
+        except ValueError:
+            pass
 
     print("=" * 60)
     print(f"Data Preprocessing Benchmark (pure numpy)")
-    print(f"  Rows: {num_rows:,}")
+    print(f"  Rows: {num_rows:,} | Runs: {num_runs}")
     print("=" * 60)
 
-    results = run_benchmark(num_rows=num_rows)
+    results = run_benchmark(num_rows=num_rows, num_runs=num_runs)
 
     out = Path("results/data_preprocessing_results.json")
     out.parent.mkdir(exist_ok=True)

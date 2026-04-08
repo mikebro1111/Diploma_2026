@@ -142,103 +142,112 @@ def read_result_file(result_path: Path) -> dict:
     return {}
 
 
-def merge_detailed_results(all_runs: list) -> dict:
+def compute_stats(arr):
+    """Compute a full statistical dictionary for an array of values."""
+    if len(arr) == 0:
+        return {}
+    arr = np.array(arr)
+    min_v = float(np.min(arr))
+    max_v = float(np.max(arr))
+    mean_v = float(np.mean(arr))
+    std_v = float(np.std(arr, ddof=1)) if len(arr) > 1 else 0.0
+    median_v = float(np.median(arr))
+    
+    # Generic keys for any metric
+    return {
+        "min": min_v,
+        "max": max_v,
+        "avg": mean_v,
+        "std": std_v,
+        "median": median_v,
+        "tail": max_v - min_v,
+        "n": len(arr),
+        "all": [float(x) for x in arr],
+        "ci_95": [
+            float(mean_v - 1.96 * std_v / np.sqrt(len(arr))) if len(arr) > 0 else mean_v,
+            float(mean_v + 1.96 * std_v / np.sqrt(len(arr))) if len(arr) > 0 else mean_v,
+        ]
+    }
+
+def merge_detailed_results(all_runs):
     """
     Merge detailed results from multiple runs.
-    Each run has keys like 'sequential' -> {'avg_time': ..., 'all_times': [...]}.
-    We combine all 'all_times' lists and recompute statistics.
+    Ensures the specific format requested by the user for timing results,
+    and a consistent format for nested metrics (Streaming, SIMD).
     """
     if not all_runs:
         return {}
 
     merged = {}
-
-    # Get all mode keys from the first run
     all_keys = set()
     for run in all_runs:
         all_keys.update(run.keys())
 
     for key in all_keys:
-        all_times_combined = []
-        all_values = {}
+        # 1. Collect all raw values for this mode/key
+        combined_times = []
+        nested_metrics = {} # {metric_name: [values]}
 
         for run in all_runs:
-            if key not in run:
-                continue
-
+            if key not in run: continue
             val = run[key]
 
             if isinstance(val, dict):
                 if "all_times" in val:
-                    # Mode with timing data (e.g. threading_4)
-                    all_times_combined.extend(val["all_times"])
+                    combined_times.extend(val["all_times"])
                 elif "avg_latency" in val:
-                    # Streaming results — accumulate all metric lists
-                    for metric_name, metric_val in val.items():
-                        if isinstance(metric_val, (int, float)):
-                            if metric_name not in all_values:
-                                all_values[metric_name] = []
-                            all_values[metric_name].append(float(metric_val))
-                        elif isinstance(metric_val, dict) and "mean" in metric_val:
-                            if metric_name not in all_values:
-                                all_values[metric_name] = []
-                            all_values[metric_name].append(float(metric_val["mean"]))
+                    # Streaming
+                    for m_name, m_val in val.items():
+                        if m_name not in nested_metrics: nested_metrics[m_name] = []
+                        if isinstance(m_val, (int, float)):
+                            nested_metrics[m_name].append(float(m_val))
+                        elif isinstance(m_val, dict) and "mean" in m_val:
+                            nested_metrics[m_name].append(float(m_val["mean"]))
                 else:
-                    # Nested dict (e.g. SIMD sequential/threaded/matrix)
-                    if key not in merged:
-                        merged[key] = {}
+                    # SIMD-style nested dict
                     for subkey, subval in val.items():
+                        if subkey not in nested_metrics: nested_metrics[subkey] = []
                         if isinstance(subval, (int, float)):
-                            if subkey not in merged[key]:
-                                merged[key][subkey] = {"all_values": []}
-                            merged[key][subkey]["all_values"].append(float(subval))
+                            nested_metrics[subkey].append(float(subval))
+                        elif isinstance(subval, dict) and "all_values" in subval:
+                            nested_metrics[subkey].extend(subval["all_values"])
             elif isinstance(val, (int, float)):
-                all_times_combined.append(float(val))
+                combined_times.append(float(val))
 
-        if all_times_combined:
-            arr = np.array(all_times_combined)
-            min_t = float(np.min(arr))
-            max_t = float(np.max(arr))
-            tail = max_t - min_t
+        # 2. Finalize based on what was collected
+        if combined_times:
+            stats = compute_stats(combined_times)
+            # Use specific keys requested by the user for timing
             merged[key] = {
-                "min_time": min_t,
-                "tail_length": tail,
-                
-                "avg_time": float(np.mean(arr)),
-                "std_time": float(np.std(arr, ddof=1)),
-                "max_time": max_t,
-                "median_time": float(np.median(arr)),
-                "n_runs": len(arr),
-                "all_times": [float(x) for x in arr],
-                # 95% confidence interval
-                "ci_95": [
-                    float(np.mean(arr) - 1.96 * np.std(arr, ddof=1) / np.sqrt(len(arr))),
-                    float(np.mean(arr) + 1.96 * np.std(arr, ddof=1) / np.sqrt(len(arr))),
-                ],
+                "min_time": stats["min"],
+                "tail_length": stats["tail"],
+                "avg_time": stats["avg"],
+                "std_time": stats["std"],
+                "max_time": stats["max"],
+                "median_time": stats["median"],
+                "n_runs": stats["n"],
+                "all_times": stats["all"],
+                "ci_95": stats["ci_95"]
             }
-        elif all_values:
-            # Streaming-type results
+        elif nested_metrics:
             merged[key] = {}
-            for metric_name, vals in all_values.items():
-                arr = np.array(vals)
-                merged[key][metric_name] = {
-                    "mean": float(np.mean(arr)),
-                    "std": float(np.std(arr, ddof=1)),
-                    "n_runs": len(arr),
-                    "all_values": [float(x) for x in arr],
+            for m_name, m_vals in nested_metrics.items():
+                stats = compute_stats(m_vals)
+                # For nested metrics, use descriptive but consistent keys
+                # If it looks like a time metric, use _time suffix, otherwise use _val
+                suffix = "_time" if "latency" in m_name or "time" in m_name.lower() or "numpy" in m_name.lower() or "matmul" in m_name or "elementwise" in m_name or "reductions" in m_name else "_val"
+                
+                merged[key][m_name] = {
+                    f"min{suffix}": stats["min"],
+                    f"tail_length": stats["tail"],
+                    f"avg{suffix}": stats["avg"],
+                    f"std{suffix}": stats["std"],
+                    f"max{suffix}": stats["max"],
+                    f"median{suffix}": stats["median"],
+                    "n_runs": stats["n"],
+                    f"all{suffix}s": stats["all"],
+                    "ci_95": stats["ci_95"]
                 }
-        elif key in merged and isinstance(merged[key], dict):
-            # Finalize nested dicts (SIMD)
-            for subkey in list(merged[key].keys()):
-                if isinstance(merged[key][subkey], dict) and "all_values" in merged[key][subkey]:
-                    vals = merged[key][subkey]["all_values"]
-                    arr = np.array(vals)
-                    merged[key][subkey] = {
-                        "mean": float(np.mean(arr)),
-                        "std": float(np.std(arr, ddof=1)),
-                        "n_runs": len(arr),
-                        "all_values": [float(x) for x in arr],
-                    }
 
     return merged
 
@@ -280,8 +289,8 @@ WORKLOADS = [
     {
         "name": "SIMD Vectorization",
         "script": "workloads/workload_simd.py",
-        "args": ["100000000"],
-        "params": "100M elements",
+        "args": ["500000000"],
+        "params": "500M elements",
         "result_file": "simd_results.json",
         "timeout": 1200,
     },

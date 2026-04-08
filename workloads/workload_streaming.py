@@ -108,7 +108,7 @@ class StreamProcessor:
         return {'num_processed': 0, 'avg_latency': 0, 'throughput': 0}
 
 
-def run_benchmark(num_events: int = 50000, events_per_second: int = 100, num_runs: int = 3):
+def run_benchmark(num_events: int = 50000, events_per_second: int = 100, num_runs: int = 1):
     """Run pure-Python workload threaded scaling."""
     results = {}
     worker_counts = [1, 2, 4, 8]
@@ -165,7 +165,7 @@ def run_benchmark(num_events: int = 50000, events_per_second: int = 100, num_run
 
 if __name__ == "__main__":
     num_events = int(sys.argv[1]) if len(sys.argv) > 1 else 100000
-    num_runs = int(sys.argv[2]) if len(sys.argv) > 2 else 3
+    num_runs = int(sys.argv[2]) if len(sys.argv) > 2 else 1
     
     print("=" * 60)
     print(f"Streaming Benchmark (Pure Python JSON/Math - no NumPy CPU)")
