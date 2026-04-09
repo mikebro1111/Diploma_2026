@@ -25,7 +25,27 @@ def load_data() -> dict:
         data = json.load(fh)
     # Define globally for plot titles
     global n_runs
-    n_runs = data.get("metadata", {}).get("num_iterations", 20)
+    meta = data.get("metadata", {})
+    n_runs = meta.get("num_iterations")
+    if n_runs is None:
+        # Fallback to checking n_runs in the first workload's merged data
+        wls = data.get("workloads", {})
+        if wls:
+            first_wl = list(wls.values())[0]
+            for variant in ["gil", "nogil"]:
+                merged = first_wl.get(variant, {}).get("merged", {})
+                if merged:
+                    first_mode = list(merged.values())[0]
+                    # Could be simple or nested
+                    if "n_runs" in first_mode:
+                        n_runs = first_mode["n_runs"]
+                    elif isinstance(first_mode, dict):
+                        for subval in first_mode.values():
+                            if isinstance(subval, dict) and "n_runs" in subval:
+                                n_runs = subval["n_runs"]
+                                break
+                    if n_runs: break
+    if n_runs is None: n_runs = 20
     return data
 
 
@@ -103,12 +123,33 @@ def plot_01_overall(data):
 
     for name, wl in data["workloads"].items():
         names.append(name)
-        gs = wl["gil"]["wall_stats"]
-        ns = wl["nogil"]["wall_stats"]
-        gil_means.append(gs["min"])
-        gil_stds.append(gs["max"] - gs["min"])  # Tail length
-        nogil_means.append(ns["min"])
-        nogil_stds.append(ns["max"] - ns["min"])
+        
+        def _get_overall_stats(variant_data):
+            # Try specific wall_stats first
+            if "wall_stats" in variant_data:
+                return variant_data["wall_stats"]["min"], variant_data["wall_stats"]["max"] - variant_data["wall_stats"]["min"]
+            # Fallback to 'sequential' or first available mode in 'merged'
+            merged = variant_data.get("merged", {})
+            for mode in ["sequential", "workers_1", "threading_1"]:
+                if mode in merged:
+                    d = merged[mode]
+                    # Handle both simple and nested (Streaming)
+                    avg = _get_avg(wl, "gil" if variant_data == wl.get("gil") else "nogil", mode)
+                    std = _get_std(wl, "gil" if variant_data == wl.get("gil") else "nogil", mode)
+                    return avg, std
+            # Last resort
+            if merged:
+                first_mode = list(merged.keys())[0]
+                return _get_avg(wl, "gil", first_mode), _get_std(wl, "gil", first_mode)
+            return 0.0, 0.0
+
+        gm, gs = _get_overall_stats(wl.get("gil", {}))
+        nm, ns = _get_overall_stats(wl.get("nogil", {}))
+        
+        gil_means.append(gm)
+        gil_stds.append(gs)
+        nogil_means.append(nm)
+        nogil_stds.append(ns)
 
     x = np.arange(len(names))
     w = 0.35
@@ -295,16 +336,19 @@ def plot_04_ml_training(data):
 # =============================================================================
 def plot_05_boxplot(data):
     """Box plot showing distribution of measurements for key modes."""
-    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+    fig, axes = plt.subplots(3, 3, figsize=(18, 15))
     axes = axes.flatten()
 
     plot_configs = [
         ("Data Preprocessing", "sequential", "Data Prep: Sequential"),
         ("Data Preprocessing", "threading_8", "Data Prep: 8 Threads"),
-        ("Image Processing", "threading_4", "Image Proc: 4 Threads"),
         ("Image Processing", "threading_8", "Image Proc: 8 Threads"),
-        ("ML Training", "linear_reg_threading_4", "ML: LR 4 Threads"),
         ("ML Training", "linear_reg_threading_8", "ML: LR 8 Threads"),
+        ("Streaming", "workers_8", "Streaming: 8 Threads"),
+        ("Mandelbrot", "sequential", "Mandelbrot: Sequential"),
+        ("Mandelbrot", "threading_8", "Mandelbrot: 8 Threads"),
+        ("Fibonacci", "threading_8", "Fibonacci: 8 Threads"),
+        ("Monte Carlo", "threading_8", "Monte Carlo: 8 Threads"),
     ]
 
     for ax, (wl_name, mode, title) in zip(axes, plot_configs):
@@ -339,7 +383,7 @@ def plot_05_boxplot(data):
         ax.set_ylabel('Time (s)')
         ax.grid(axis='y', alpha=0.3)
 
-    plt.suptitle('Distribution of Measurements (N=15 per group)', fontsize=14, y=1.02)
+    plt.suptitle(f'Distribution of Measurements (N={n_runs} per group)', fontsize=14, y=1.02)
     plt.tight_layout()
     plt.savefig(CHARTS_DIR / "05_boxplots.png")
     plt.close()
@@ -905,8 +949,47 @@ def main():
     plot_08_ci(data)
     plot_09_cpu_utilization(data)
     plot_10_memory_usage(data)
+    
+    # New High-Impact Workloads
+    _plot_generic_scaling(data, "Mandelbrot", "11_mandelbrot.png")
+    _plot_generic_scaling(data, "Monte Carlo", "12_monte_carlo.png")
+    _plot_generic_scaling(data, "Fibonacci", "13_fibonacci.png")
 
     run_statistical_analysis(data)
+
+
+def _plot_generic_scaling(data, wl_name, filename):
+    wl = data["workloads"].get(wl_name)
+    if not wl: return
+
+    modes = ["sequential", "threading_2", "threading_4", "threading_8"]
+    labels = ["1 (seq)", "2", "4", "8"]
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+    for variant, color, lbl in [("gil", GIL_COLOR, "GIL"), ("nogil", NOGIL_COLOR, "No-GIL")]:
+        times = [_get_avg(wl, variant, m) for m in modes]
+        stds = [_get_std(wl, variant, m) for m in modes]
+        ax1.errorbar(labels, times, yerr=stds, marker='o', linewidth=2, markersize=8, label=lbl, color=color, capsize=4)
+        if times[0] > 0:
+            speedups = [times[0] / t if t > 0 else 0 for t in times]
+            ax2.plot(labels, speedups, marker='s', linewidth=2, markersize=8, label=lbl, color=color)
+
+    ax1.set_xlabel('Thread Count')
+    ax1.set_ylabel('Execution Time (min\n+ tail)')
+    ax1.set_title(f'{wl_name}: Execution Time\n({wl.get("params", "")})')
+    ax1.set_ylim(bottom=0)
+    ax1.legend(); ax1.grid(True, alpha=0.3)
+
+    ax2.plot(labels, [1, 2, 4, 8], '--', alpha=0.3, color=IDEAL_COLOR, label='Ideal linear')
+    ax2.set_xlabel('Thread Count'); ax2.set_ylabel('Speedup (vs Sequential)')
+    ax2.set_title(f'{wl_name}: Speedup Scaling')
+    ax2.set_ylim(bottom=0); ax2.legend(); ax2.grid(True, alpha=0.3)
+
+    plt.suptitle(f'{wl_name} Benchmark (N={n_runs} measurements)', fontsize=14, y=1.02)
+    plt.tight_layout()
+    plt.savefig(CHARTS_DIR / filename)
+    plt.close()
+    print(f"✅ {filename}")
 
     print(f"\n{'='*70}")
     print(f"All charts saved to: {CHARTS_DIR}")

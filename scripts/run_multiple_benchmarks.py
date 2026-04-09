@@ -195,6 +195,8 @@ def merge_detailed_results(all_runs):
             if isinstance(val, dict):
                 if "all_times" in val:
                     combined_times.extend(val["all_times"])
+                elif "all" in val:
+                    combined_times.extend(val["all"])
                 elif "avg_latency" in val:
                     # Streaming
                     for m_name, m_val in val.items():
@@ -211,6 +213,8 @@ def merge_detailed_results(all_runs):
                             nested_metrics[subkey].append(float(subval))
                         elif isinstance(subval, dict) and "all_values" in subval:
                             nested_metrics[subkey].extend(subval["all_values"])
+                        elif isinstance(subval, dict) and "all_times" in subval: # Resilient for deep nesting
+                            nested_metrics[subkey].extend(subval["all_times"])
             elif isinstance(val, (int, float)):
                 combined_times.append(float(val))
 
@@ -281,10 +285,10 @@ WORKLOADS = [
     {
         "name": "Streaming",
         "script": "workloads/workload_streaming.py",
-        "args": ["1000000"],
-        "params": "1M events",
+        "args": ["2000000"],
+        "params": "2M events",
         "result_file": "streaming_results.json",
-        "timeout": 1800,
+        "timeout": 3600,
     },
     {
         "name": "SIMD Vectorization",
@@ -292,6 +296,30 @@ WORKLOADS = [
         "args": ["500000000"],
         "params": "500M elements",
         "result_file": "simd_results.json",
+        "timeout": 1200,
+    },
+    {
+        "name": "Mandelbrot",
+        "script": "workloads/workload_mandelbrot.py",
+        "args": ["2236"],
+        "params": "2236x2236",
+        "result_file": "mandelbrot_results.json",
+        "timeout": 1200,
+    },
+    {
+        "name": "Monte Carlo",
+        "script": "workloads/workload_monte_carlo.py",
+        "args": ["300000000"],
+        "params": "300M samples",
+        "result_file": "monte_carlo_results.json",
+        "timeout": 2400,
+    },
+    {
+        "name": "Fibonacci",
+        "script": "workloads/workload_fibonacci.py",
+        "args": ["34", "24"],
+        "params": "fib(34) x 24",
+        "result_file": "fibonacci_results.json",
         "timeout": 1200,
     },
 ]
@@ -320,15 +348,9 @@ def run_suite(version_str, gil_path, nogil_path, num_iterations):
         print(f"❌ ERROR: Python interpreter problem for {version_str}!")
         sys.exit(1)
 
+    # Master record structure (STRICT MINIMALIST: only workloads, no metadata)
     master = {
-        "metadata": {
-            "version_group": version_str,
-            "timestamp": datetime.now().isoformat(),
-            "num_iterations": num_iterations,
-            "gil_python": gil_info,
-            "nogil_python": nogil_info,
-        },
-        "workloads": {},
+        "workloads": {}
     }
 
     total_workloads = len(WORKLOADS)
@@ -374,13 +396,21 @@ def run_suite(version_str, gil_path, nogil_path, num_iterations):
                 wl_result[variant]["resource_samples"].append(run_out.get("resources", {}))
 
                 if run_out["success"]:
-                    parsed = read_result_file(result_file)
+                    parsed = None
+                    # Check root and RESULTS_DIR
+                    for check_path in [Path(wl_def["result_file"]), RESULTS_DIR / wl_def["result_file"]]:
+                        if check_path.exists():
+                            parsed = read_result_file(check_path)
+                            if parsed: break
+                    
                     if parsed:
                         wl_result[variant]["run_details"].append(parsed)
-                    res = run_out.get("resources", {})
-                    cpu_i = f"CPU={res.get('cpu_mean_percent','?')}%" if res else ""
-                    mem_i = f"MEM={res.get('mem_peak_mb','?')}MB" if res else ""
-                    print(f"✅ {run_out['wall_time']:.2f}s {cpu_i} {mem_i}")
+                        res = run_out.get("resources", {})
+                        cpu_i = f"CPU={res.get('cpu_mean_percent','?')}%" if res else ""
+                        mem_i = f"MEM={res.get('mem_peak_mb','?')}MB" if res else ""
+                        print(f"✅ {run_out['wall_time']:.2f}s {cpu_i} {mem_i}")
+                    else:
+                        print(f"⚠️ Result file {wl_def['result_file']} not found!")
                 else:
                     err = run_out.get('error', run_out.get('stderr', ''))[:100]
                     print(f"❌ {err}")
@@ -403,18 +433,30 @@ def run_suite(version_str, gil_path, nogil_path, num_iterations):
                 "n": len(wt),
             }
 
-        master["workloads"][wl_name] = wl_result
+        # Prune raw data for the master JSON to ONLY include gil/nogil blocks as requested
+        pruned_wl = {
+            "gil": {"merged": wl_result["gil"]["merged"]},
+            "nogil": {"merged": wl_result["nogil"]["merged"]}
+        }
+        master["workloads"][wl_name] = pruned_wl
 
     master_file = out_dir / "multi_run_master.json"
     with open(master_file, "w") as f:
         json.dump(master, f, indent=2)
 
     # Copy individual workload results to the version-specific directory
+    print("\n--- Saving individual results ---")
     for wl_def in WORKLOADS:
-        src = RESULTS_DIR / wl_def["result_file"]
-        if src.exists():
-            import shutil
-            shutil.copy(src, out_dir / wl_def["result_file"])
+        fname = wl_def["result_file"]
+        # Check root and RESULTS_DIR
+        paths = [Path(fname), RESULTS_DIR / fname]
+        for src in paths:
+            if src.exists():
+                dest = out_dir / fname
+                import shutil
+                shutil.move(str(src), str(dest))
+                print(f"  Saved: {fname} -> {out_dir.name}/")
+                break
 
     print(f"\n\n{'='*70}")
     print(f"{version_str} BENCHMARK COMPLETE")
