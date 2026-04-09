@@ -1,16 +1,16 @@
 {
   "sequential": {
-    "numpy": 2.7347313340287656,
-    "numpy_complex": 107.55400799994823
+    "numpy": 2.104828625000664,
+    "numpy_complex": 91.27242595799908
   },
   "threaded": {
-    "numpy_threaded_2": 24.434454000089318,
-    "numpy_threaded_4": 1.6998876669676974,
-    "numpy_threaded_8": 0.4121717499801889
+    "numpy_threaded_2": 17.462228500007768,
+    "numpy_threaded_4": 1.1491978749982081,
+    "numpy_threaded_8": 0.5873531669931253
   },
   "matrix": {
-    "matmul": 0.013546625035814941,
-    "elementwise": 0.004217374953441322,
-    "reductions": 0.009132666978985071
+    "matmul": 0.0152556669927435,
+    "elementwise": 0.006347874994389713,
+    "reductions": 0.006320625005173497
   }
 }
