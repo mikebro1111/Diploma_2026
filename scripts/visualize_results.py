@@ -424,8 +424,8 @@ def plot_05b_streaming(data):
                 lat_val = avg_lat_stats.get("min_time") or avg_lat_stats.get("avg_time", 0)
                 latencies.append(lat_val * 1000)  # to ms
 
-                # Throughput (using min_val if available, else avg_val)
-                tp_val = tp_stats.get("min_val") or tp_stats.get("avg_val", 0)
+                # Throughput (using max_val if available, else avg_val)
+                tp_val = tp_stats.get("max_val") or tp_stats.get("avg_val", 0)
                 throughputs.append(tp_val)
             else:
                 latencies.append(0)
@@ -871,15 +871,21 @@ def run_statistical_analysis(data):
                 nd = n_node[k]
 
                 full_key = f"{prefix}: {k}" if prefix else k
-
                 if isinstance(gd, dict):
-                    # Check for timing data
-                    gt = gd.get("all_times") or gd.get("all_values")
-                    nt = nd.get("all_times") or nd.get("all_values")
+                    # Check for timing data or general values
+                    gt = gd.get("all_times") or gd.get("all_vals") or gd.get("all_values")
+                    nt = nd.get("all_times") or nd.get("all_vals") or nd.get("all_values")
 
                     if gt and nt and len(gt) > 0 and len(nt) > 0:
-                        g_mean = gd.get("min_time") or gd.get("mean") or np.min(gt)
-                        n_mean = nd.get("min_time") or nd.get("mean") or np.min(nt)
+                        is_throughput = "throughput" in full_key.lower()
+                        
+                        if is_throughput:
+                            g_mean = gd.get("max_val") or gd.get("mean") or np.max(gt)
+                            n_mean = nd.get("max_val") or nd.get("mean") or np.max(nt)
+                        else:
+                            g_mean = gd.get("min_time") or gd.get("mean") or np.min(gt)
+                            n_mean = nd.get("min_time") or nd.get("mean") or np.min(nt)
+                            
                         speedup = g_mean / n_mean if n_mean > 0 else 0
 
                         # Stats
