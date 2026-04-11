@@ -100,16 +100,39 @@ def _get_avg(wl, variant, mode):
     return 0.0
 
 def _get_std(wl, variant, mode):
-    """Get tail_length for a mode."""
+    """Get statistical error (95% CI width preferred, fallback to SD)."""
     d = _get_mode_data(wl, variant, mode)
-    if "tail_length" in d:
-        return d["tail_length"]
-    if "avg_latency" in d:
-        return d["avg_latency"].get("tail_length", 0)
+    
+    # Check for direct metrics (top-level or nested)
+    def extract_err(metric_dict):
+        # Prefer 95% Confidence Interval for "Adequate" representation
+        if "ci_95" in metric_dict:
+            ci = metric_dict["ci_95"]
+            if len(ci) == 2:
+                # Width from mean to 95% boundary
+                mean_v = metric_dict.get("avg_time") or metric_dict.get("avg_val") or metric_dict.get("mean", 0)
+                return max(0, ci[1] - mean_v)
+        
+        # Fallback to Standard Deviation
+        if "std_time" in metric_dict: return metric_dict["std_time"]
+        if "std_val" in metric_dict: return metric_dict["std_val"]
+        if "std" in metric_dict: return metric_dict["std"]
+        
+        # Last resort: Tail / 2 (conservative estimate)
+        if "tail_length" in metric_dict: return metric_dict["tail_length"] / 2
+        return 0.0
+
+    if "min_time" in d or "ci_95" in d:
+        return extract_err(d)
+        
+    if "avg_latency" in d: # Streaming
+        return extract_err(d["avg_latency"])
+        
     if isinstance(d, dict):
-        for k, v in d.items():
-            if isinstance(v, dict) and "tail_length" in v:
-                return v["tail_length"]
+        # SIMD or other nested (fetch first available)
+        for v in d.values():
+            if isinstance(v, dict):
+                return extract_err(v)
     return 0.0
 
 
@@ -118,70 +141,123 @@ def _get_std(wl, variant, mode):
 # =============================================================================
 def plot_01_overall(data):
     names = []
-    gil_means, gil_stds = [], []
-    nogil_means, nogil_stds = [], []
+    gil_vals = []
+    gil_errs = []
+    nogil_vals = []
+    nogil_errs = []
+    speedups = []
+    
+    # Define which workloads/modes to show for a complete "Parallel Matrix"
+    configs = [
+        ("Data Preprocessing", "threading_8", "Data Prep"),
+        ("Image Processing", "threading_8", "Image Proc"),
+        ("ML Training", "linear_reg_threading_8", "ML: LinReg"),
+        ("ML Training", "random_forest_threading_8", "ML: RandForest"),
+        ("Streaming", "workers_8", "Streaming"),
+        ("SIMD Vectorization", "matrix: matmul", "SIMD: Matmul"),
+        ("SIMD Vectorization", "sequential: numpy", "SIMD: NumPy Seq"),
+        ("Mandelbrot", "threading_8", "Mandelbrot"),
+        ("Monte Carlo", "threading_8", "Monte Carlo"),
+        ("Fibonacci", "threading_8", "Fibonacci")
+    ]
 
-    for name, wl in data["workloads"].items():
-        names.append(name)
+    for wl_key, mode_key, disp_name in configs:
+        wl = data["workloads"].get(wl_key)
+        if not wl: continue
         
-        def _get_overall_stats(variant_data):
-            # Try specific wall_stats first
-            if "wall_stats" in variant_data:
-                return variant_data["wall_stats"]["min"], variant_data["wall_stats"]["max"] - variant_data["wall_stats"]["min"]
-            # Fallback to 'sequential' or first available mode in 'merged'
-            merged = variant_data.get("merged", {})
-            for mode in ["sequential", "workers_1", "threading_1"]:
-                if mode in merged:
-                    d = merged[mode]
-                    # Handle both simple and nested (Streaming)
-                    avg = _get_avg(wl, "gil" if variant_data == wl.get("gil") else "nogil", mode)
-                    std = _get_std(wl, "gil" if variant_data == wl.get("gil") else "nogil", mode)
-                    return avg, std
-            # Last resort
-            if merged:
-                first_mode = list(merged.keys())[0]
-                return _get_avg(wl, "gil", first_mode), _get_std(wl, "gil", first_mode)
-            return 0.0, 0.0
+        # Verify mode exists
+        if mode_key not in wl.get("gil", {}).get("merged", {}) and \
+           mode_key not in wl.get("nogil", {}).get("merged", {}):
+            if "sequential" in wl.get("gil", {}).get("merged", {}):
+                mode_key = "sequential"
+            else:
+                continue
 
-        gm, gs = _get_overall_stats(wl.get("gil", {}))
-        nm, ns = _get_overall_stats(wl.get("nogil", {}))
+        t_gil = _get_avg(wl, "gil", mode_key)
+        err_gil = _get_std(wl, "gil", mode_key)
+        t_nogil = _get_avg(wl, "nogil", mode_key)
+        err_nogil = _get_std(wl, "nogil", mode_key)
         
-        gil_means.append(gm)
-        gil_stds.append(gs)
-        nogil_means.append(nm)
-        nogil_stds.append(ns)
+        if t_gil == 0: continue
+            
+        gil_vals.append(100.0)
+        gil_errs.append((err_gil / t_gil) * 100.0)
+        
+        nogil_vals.append((t_nogil / t_gil) * 100.0)
+        nogil_errs.append((err_nogil / t_gil) * 100.0)
+        
+        # Speedup label
+        if t_nogil < t_gil:
+            factor = t_gil/t_nogil
+            speedups.append(f"{factor:.1f}x Faster" if factor >= 1.05 else "")
+        else:
+            factor = t_nogil/t_gil
+            speedups.append(f"{factor:.1f}x Slower" if factor >= 1.05 else "")
+
+        setup = mode_key.replace("threading_", "T").replace("workers_", "W")
+        if setup == "sequential": setup = "Seq"
+        names.append(f"{disp_name}\n({setup})")
 
     x = np.arange(len(names))
-    w = 0.35
+    w = 0.38
 
-    fig, ax = plt.subplots(figsize=(13, 6))
-    ax.bar(x - w/2, gil_means, w, yerr=gil_stds, capsize=4,
-           label='With GIL', color=GIL_COLOR, edgecolor='white', linewidth=0.5)
-    ax.bar(x + w/2, nogil_means, w, yerr=nogil_stds, capsize=4,
-           label='Without GIL (Free-threaded)', color=NOGIL_COLOR, edgecolor='white', linewidth=0.5)
+    fig, ax = plt.subplots(figsize=(16, 9))
+    
+    # Grid and style
+    ax.set_facecolor('#fdfdfd')
+    ax.grid(axis='y', alpha=0.3, which='major', linestyle='-', linewidth=1)
+    ax.grid(axis='y', alpha=0.1, which='minor', linestyle=':', linewidth=0.5)
+    ax.set_axisbelow(True)
+    
+    gil_yerr = [np.zeros(len(gil_errs)), gil_errs]
+    nogil_yerr = [np.zeros(len(nogil_errs)), nogil_errs]
 
-    # Value labels
+    # Plot bars with subtle gradients (simulated by alpha)
+    ax.bar(x - w/2, gil_vals, w, yerr=gil_yerr, capsize=5, ecolor='#333333',
+           label='With GIL (100% Baseline)', color=GIL_COLOR, alpha=0.85, edgecolor='black', linewidth=0.8)
+    ax.bar(x + w/2, nogil_vals, w, yerr=nogil_yerr, capsize=5, ecolor='#333333',
+           label='Without GIL (Free-threaded)', color=NOGIL_COLOR, alpha=0.85, edgecolor='black', linewidth=0.8)
+
+    # Annotations with collision avoidance
     for i in range(len(names)):
-        ax.annotate(f'{gil_means[i]:.1f}s',
-                    xy=(x[i] - w/2, gil_means[i] + gil_stds[i]),
-                    xytext=(0, 5), textcoords="offset points", ha='center', fontsize=8)
-        ax.annotate(f'{nogil_means[i]:.1f}s',
-                    xy=(x[i] + w/2, nogil_means[i] + nogil_stds[i]),
-                    xytext=(0, 5), textcoords="offset points", ha='center', fontsize=8)
+        # GIL Label
+        ax.text(x[i] - w/2, 100 + gil_errs[i] + 4, "100%", ha='center', va='bottom',
+                fontsize=9, fontweight='bold', color='#444444')
+        
+        # No-GIL Label (higher if close to 100% to avoid collision)
+        pct_val = nogil_vals[i]
+        err_val = nogil_errs[i]
+        
+        # Vertical stacking if bars are nearly equal height
+        y_pos = pct_val + err_val + 5
+        if abs(pct_val - 100) < 15:
+            # Shift No-GIL labels slightly higher to clear the shared "100%" space
+            y_pos += 8
+            
+        label = f"{pct_val:.0f}%"
+        if speedups[i]:
+            label += f"\n({speedups[i]})"
+            
+        ax.text(x[i] + w/2, y_pos, label, ha='center', va='bottom',
+                fontsize=10, fontweight='bold', color='#c0392b')
 
-    ax.set_xlabel('Workload')
-    ax.set_ylabel('Wall Time (seconds) [Min + Tail]')
-    ax.set_title(f'Overall Performance: GIL vs Free-threaded\n(Min time, error bars = tail length)')
+    ax.set_ylabel('Execution Time Relative to GIL (%)', fontsize=12, labelpad=15)
+    ax.set_title('Python 3.14 Performance Evolution: Normalized Matrix\n(Bars = Min time, Whiskers = 95% Confidence Interval; Lower is Faster)', fontsize=15, pad=35, fontweight='bold')
     ax.set_xticks(x)
-    ax.set_xticklabels(names, rotation=15, ha='right')
-    ax.set_ylim(bottom=0)
-    ax.legend()
-    ax.grid(axis='y', alpha=0.3)
-
+    ax.set_xticklabels(names, rotation=30, ha='right', fontsize=10)
+    ax.axhline(100, color='black', linewidth=1.5, linestyle='--', alpha=0.4, label='GIL Baseline')
+    
+    # Dynamic Y-limit
+    all_tops = [nogil_vals[i] + nogil_errs[i] for i in range(len(nogil_vals))] + [100 + e for e in gil_errs]
+    ax.set_ylim(0, max(all_tops) * 1.35)
+    ax.yaxis.set_minor_locator(plt.MultipleLocator(10))
+    
+    ax.legend(loc='upper right', frameon=True, framealpha=0.9, edgecolor='gray', fontsize=10)
+    
     plt.tight_layout()
-    plt.savefig(CHARTS_DIR / "01_overall_comparison.png")
+    plt.savefig(CHARTS_DIR / "01_overall_comparison.png", dpi=200)
     plt.close()
-    print("✅ 01_overall_comparison.png")
+    print("✅ 01_overall_comparison.png (Polished aesthetics)")
 
 
 # =============================================================================
