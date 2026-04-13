@@ -3,14 +3,14 @@ import json
 import argparse
 import random
 import threading
+from pathlib import Path
 
 def monte_carlo_worker(num_samples, results, idx):
     count = 0
-    # Use a thread-local random instance or just random.random (protected by GIL normally)
-    # In No-GIL, random is thread-safe.
+    rng = random.Random(idx)  # thread-local RNG, seeded per-thread
     for _ in range(num_samples):
-        x = random.random()
-        y = random.random()
+        x = rng.random()
+        y = rng.random()
         if x*x + y*y <= 1.0:
             count += 1
     results[idx] = count
@@ -66,5 +66,7 @@ if __name__ == "__main__":
         }
         print(f"  {name}: {final_results[name]['min_time']:.4f}s")
 
-    with open("monte_carlo_results.json", "w") as f:
+    out = Path("results/monte_carlo_results.json")
+    out.parent.mkdir(exist_ok=True)
+    with open(out, "w") as f:
         json.dump(final_results, f, indent=2)

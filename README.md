@@ -1,236 +1,245 @@
 # Free-threaded Python Benchmark
 
-Researching performance benefits of the free-threaded (no-GIL) Python 3.13 interpreter for Data Science workloads.
+Researching performance benefits of the free-threaded (no-GIL) Python 3.13/3.14 interpreter for CPU-bound and Data Science workloads.
 
 ## Project Structure
 
 ```
 Diploma_2026/
-├── workloads/                          # Workload implementations (5 benchmarks)
-│   ├── workload_data_preprocessing.py  #   Tabular processing (NYC Taxi, ~3M rows)
-│   ├── workload_image_processing.py    #   Image processing (Caltech-101, 9K+ photos)
-│   ├── workload_ml.py                  #   ML Training (200K samples, 50 features)
-│   ├── workload_streaming.py           #   Real-time event streaming (50K events)
-│   └── workload_simd.py               #   SIMD-vectorization (50M elements)
-├── scripts/                            # Implementation scripts
-│   ├── download_real_datasets.py       #   Dataset downloader
-│   ├── run_multiple_benchmarks.py      #   Multi-iteration benchmarker
-│   └── visualize_results.py            #   Visualization and statistical analysis
-├── results/                            # Generated results
-│   ├── charts/                         #   11 charts (.png)
-│   ├── multi_run_master.json           #   Aggregated JSON master file
-│   └── statistical_analysis_multirun.json
-├── data_input/                         # Downloaded datasets (gitignored)
-│   └── nyc_taxi.parquet                #   NYC Yellow Taxi dataset
-├── images_input/                       # Image dataset (gitignored)
-│   └── *.jpg                           #   Caltech-101 real photos
-├── requirements_gil.txt                # Dependencies for GIL version
-├── requirements_nogil.txt              # Dependencies for No-GIL version
-├── diploma_detailed_plan.md            # Detailed diploma project plan
+├── workloads/                              # Workload implementations (8 benchmarks)
+│   ├── workload_data_preprocessing.py      #   Pure NumPy tabular processing (10M rows)
+│   ├── workload_image_processing.py        #   Pillow image pipeline (Caltech-101, 9K+ photos)
+│   ├── workload_ml.py                      #   ML Training via scikit-learn/joblib (500K samples)
+│   ├── workload_streaming.py               #   Pure Python event streaming (2M events)
+│   ├── workload_simd.py                    #   SIMD/NumPy vectorization (500M elements)
+│   ├── workload_mandelbrot.py              #   Mandelbrot set, pure Python (2236x2236)
+│   ├── workload_monte_carlo.py             #   Monte Carlo Pi estimation (300M samples)
+│   └── workload_fibonacci.py               #   Recursive Fibonacci fib(34) x 24 tasks
+├── scripts/                                # Orchestration & analysis
+│   ├── run_multiple_benchmarks.py          #   Multi-iteration benchmark runner (GIL vs No-GIL)
+│   ├── visualize_results.py                #   Chart generation & statistical analysis
+│   ├── download_real_datasets.py           #   Dataset downloader (Caltech-101, NYC Taxi)
+│   ├── setup_313_windows.ps1               #   Windows: auto-install Python 3.13 + 3.13t
+│   └── setup_314_windows.ps1               #   Windows: auto-install Python 3.14 + 3.14t
+├── results/                                # Generated results (per Python version)
+│   ├── 3.13/
+│   │   ├── charts/                         #   14 charts (.png)
+│   │   ├── multi_run_master.json           #   Aggregated timing + resource data
+│   │   └── statistical_analysis_multirun.json
+│   └── 3.14/
+│       ├── charts/                         #   14 charts (.png)
+│       ├── multi_run_master.json
+│       └── statistical_analysis_multirun.json
+├── data_input/                             # Downloaded datasets (gitignored)
+│   └── nyc_taxi.parquet                    #   NYC Yellow Taxi (~3M rows)
+├── images_input/                           # Image dataset (gitignored)
+│   └── *.jpg                               #   Caltech-101 real photos (9144 images)
+├── requirements_gil.txt                    # Dependencies for GIL builds
+├── requirements_nogil.txt                  # Dependencies for No-GIL builds
+├── RESULTS.md                              # Summary of benchmark results
 └── README.md
 ```
 
 ## Prerequisites
 
-- **macOS** (tested on Apple Silicon)
-- **pyenv** (for Python version management)
-- **Homebrew** (for system libraries)
+- **macOS** (tested on Apple Silicon) or **Windows 10/11** (tested on Intel i5-13400F)
+- Python **3.13** and/or **3.14** — both standard (GIL) and free-threaded (no-GIL) builds
 
 ## Installation
 
-### 1. System Dependencies (macOS)
+### 1. System Dependencies
+
+<details>
+<summary><b>macOS</b></summary>
 
 ```bash
-# Xcode Command Line Tools
 xcode-select --install
-
-# Homebrew
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-# Required libraries for Python compilation
-brew install openssl readline sqlite3 xz zlib tcl-tk
+brew install openssl readline sqlite3 xz zlib tcl-tk pyenv
 ```
 
-### 2. Installing Python 3.13 via pyenv
-
+Install Python via pyenv:
 ```bash
-# Install pyenv
-brew install pyenv
+pyenv install 3.13.0 && pyenv install 3.13.0t
+pyenv install 3.14.0 && pyenv install 3.14.0t
+```
+</details>
 
-# Add to ~/.zshrc:
-echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.zshrc
-echo '[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.zshrc
-echo 'eval "$(pyenv init -)"' >> ~/.zshrc
-source ~/.zshrc
+<details>
+<summary><b>Windows (automated)</b></summary>
 
-# Standard version (with GIL)
-pyenv install 3.13.0
+PowerShell scripts download and install everything automatically:
+```powershell
+# Python 3.13 (GIL + Free-threaded) → C:\Python313, C:\Python313t
+powershell -ExecutionPolicy Bypass -File scripts\setup_313_windows.ps1
 
-# Free-threaded version (without GIL) — "t" suffix
-pyenv install 3.13.0t
+# Python 3.14 (GIL + Free-threaded) → C:\Python314, C:\Python314t
+powershell -ExecutionPolicy Bypass -File scripts\setup_314_windows.ps1
 ```
 
-> **Check:** verify both versions are installed:
-> ```bash
-> ~/.pyenv/versions/3.13.0/bin/python3.13 --version
-> # Python 3.13.0
->
-> ~/.pyenv/versions/3.13.0t/bin/python3.13t --version
-> # Python 3.13.0 (free-threading build)
-> ```
+Each script: downloads installers from python.org → installs/extracts → creates venvs → installs all dependencies → verifies.
+</details>
 
-### 3. Setting Up Virtual Environments
+<details>
+<summary><b>Windows (manual)</b></summary>
+
+Download from [python.org/downloads](https://www.python.org/downloads/):
+- Standard installer: `python-3.14.0-amd64.exe`
+- Free-threaded zip: `python-3.14.0t-amd64.zip`
+
+Then create venvs manually:
+```powershell
+"C:\Python314\python.exe"  -m venv venv_gil_314
+"C:\Python314t\python.exe" -m venv venv_nogil_314
+venv_gil_314\Scripts\pip install -r requirements_gil.txt
+venv_nogil_314\Scripts\pip install -r requirements_nogil.txt
+```
+</details>
+
+### 2. Virtual Environments (macOS)
 
 ```bash
 cd Diploma_2026
 
-# GIL 3.13 variant
-~/.pyenv/versions/3.13.0/bin/python3.13 -m venv venv_gil
-
-# No-GIL 3.13 variant
+# Python 3.13
+~/.pyenv/versions/3.13.0/bin/python3.13   -m venv venv_gil
 ~/.pyenv/versions/3.13.0t/bin/python3.13t -m venv venv_nogil
 
-# GIL 3.14 variant
-~/.pyenv/versions/3.14.0/bin/python3.14 -m venv venv_gil_314
-
-# No-GIL 3.14 variant
+# Python 3.14
+~/.pyenv/versions/3.14.0/bin/python3.14   -m venv venv_gil_314
 ~/.pyenv/versions/3.14.0t/bin/python3.14t -m venv venv_nogil_314
 ```
 
-### 4. Installing Python Dependencies
+### 3. Dependencies
+
+<details>
+<summary><b>macOS</b></summary>
 
 ```bash
-# GIL environment
 venv_gil/bin/pip install -r requirements_gil.txt
-
-# No-GIL environment
 venv_nogil/bin/pip install -r requirements_nogil.txt
-
-# (Repeat for 3.14 venvs as needed)
+# Repeat for 3.14 venvs
 ```
+</details>
 
-> **Note:** `requirements_nogil.txt` excludes `numba` and `llvmlite` as they are currently incompatible with free-threaded Python.
+<details>
+<summary><b>Windows</b></summary>
 
-### 5. Verification
+```powershell
+venv_gil\Scripts\pip install -r requirements_gil.txt
+venv_nogil\Scripts\pip install -r requirements_nogil.txt
+```
+</details>
+
+> **Note:** `requirements_nogil.txt` excludes `numba`/`llvmlite` (incompatible with free-threaded Python). Install `pyarrow` separately if needed for parquet support.
+
+### 4. Verification
 
 ```bash
-# Check GIL status
-venv_gil/bin/python -c "import sys; print('GIL enabled:', sys._is_gil_enabled())"
-# GIL enabled: True
-
-venv_nogil/bin/python -c "import sys; print('GIL enabled:', sys._is_gil_enabled())"
-# GIL enabled: False
-
-# Check core libraries
-venv_gil/bin/python -c "import numpy, pandas, sklearn, PIL, psutil; print('All OK')"
-venv_nogil/bin/python -c "import numpy, pandas, sklearn, PIL, psutil; print('All OK')"
+# macOS
+venv_gil/bin/python -c "import sys; print('GIL:', sys._is_gil_enabled())"
+venv_nogil/bin/python -c "import sys; print('GIL:', sys._is_gil_enabled())"
+```
+```powershell
+# Windows
+venv_gil\Scripts\python -c "import sys; print('GIL:', sys._is_gil_enabled())"
+venv_nogil\Scripts\python -c "import sys; print('GIL:', sys._is_gil_enabled())"
 ```
 
 ## Dataset Downloading
 
-Benchmarks use real-world datasets. The following script downloads them automatically:
-
 ```bash
+# macOS
 venv_gil/bin/python scripts/download_real_datasets.py
+
+# Windows
+venv_gil\Scripts\python scripts\download_real_datasets.py
 ```
 
 | Dataset | Source | Size | Usage |
 |---------|--------|------|-------|
-| **Caltech-101** | `data.caltech.edu` | ~150 MB | Image Processing (9144 real photos) |
+| **Caltech-101** | `data.caltech.edu` | ~131 MB | Image Processing (9144 real photos) |
 | **NYC Yellow Taxi** | `nyc.gov` TLC | ~48 MB | Data Preprocessing (~3M rows, Parquet) |
 
 ## Running Benchmarks
 
 ### Full Run (Recommended)
 
-Multi-iteration run with CPU/Memory monitoring:
-
-### Multi-Iteration Execution
+Runs all 8 workloads × 2 variants (GIL, No-GIL) × N iterations:
 
 ```bash
-# 5 iterations for all versions (3.13 and 3.14)
-venv_gil/bin/python scripts/run_multiple_benchmarks.py 5
+# macOS — 20 iterations, both 3.13 and 3.14
+venv_gil/bin/python scripts/run_multiple_benchmarks.py 20
 
-# Targeted run: 10 iterations only for Python 3.14
-venv_gil/bin/python scripts/run_multiple_benchmarks.py 10 3.14
+# macOS — specific version only
+venv_gil/bin/python scripts/run_multiple_benchmarks.py 20 3.14
+```
+```powershell
+# Windows — set UTF-8 to avoid encoding issues
+set "PYTHONUTF8=1" && venv_gil_314\Scripts\python scripts\run_multiple_benchmarks.py 20
+set "PYTHONUTF8=1" && venv_gil_314\Scripts\python scripts\run_multiple_benchmarks.py 20 3.14
 ```
 
 ### Visualization
 
 ```bash
-# Visualize 3.13 results
+# macOS
 venv_gil/bin/python scripts/visualize_results.py results/3.13
-
-# Visualize 3.14 results
 venv_gil/bin/python scripts/visualize_results.py results/3.14
 ```
-
-**Approximate time** (3 iterations, Apple M-series):
-
-| Workload | GIL | No-GIL | Total |
-|----------|-----|--------|-------|
-| Data Preprocessing | ~45s × 3 | ~65s × 3 | ~6 min |
-| Image Processing | ~250s × 3 | ~265s × 3 | ~26 min |
-| ML Training | ~250s × 3 | ~250s × 3 | ~25 min |
-| Streaming | ~28s × 3 | ~33s × 3 | ~3 min |
-| SIMD Vectorization | ~3s × 3 | ~2s × 3 | ~0.5 min |
-| **Total** | | | **~60 min** |
-
-Results are saved to `results/multi_run_master.json`.
+```powershell
+# Windows
+set "PYTHONUTF8=1" && venv_gil_314\Scripts\python scripts\visualize_results.py results\3.13
+set "PYTHONUTF8=1" && venv_gil_314\Scripts\python scripts\visualize_results.py results\3.14
+```
 
 ### Individual Workloads
 
 ```bash
-# Data Preprocessing (auto = real NYC Taxi data)
-venv_gil/bin/python workloads/workload_data_preprocessing.py auto
-
-# Image Processing
-venv_gil/bin/python workloads/workload_image_processing.py images_input images_output
-
-# ML Training (200K samples)
-venv_gil/bin/python workloads/workload_ml.py 200000
-
-# Streaming (50K events, 100K events/sec)
-venv_gil/bin/python workloads/workload_streaming.py 50000 100000
-
-# SIMD Vectorization (50M elements)
-venv_gil/bin/python workloads/workload_simd.py 50000000
+python workloads/workload_data_preprocessing.py 10000000
+python workloads/workload_image_processing.py images_input images_output
+python workloads/workload_ml.py 500000
+python workloads/workload_streaming.py 2000000
+python workloads/workload_simd.py 500000000
+python workloads/workload_mandelbrot.py 2236 1
+python workloads/workload_monte_carlo.py 300000000 1
+python workloads/workload_fibonacci.py 34 24 1
 ```
 
-## Visualization
+## Generated Charts
 
-```bash
-venv_gil/bin/python scripts/visualize_results.py
-```
+14 charts per Python version in `results/{version}/charts/`:
 
-Generates 11 charts in `results/charts/`:
-
-| Plot | Description |
-|------|-------------|
-| `01_overall_comparison.png` | General comparison of GIL vs No-GIL |
-| `02_data_preprocessing.png` | Data Preprocessing scaling |
-| `03_image_processing.png` | Image Processing scaling |
-| `04_ml_training.png` | ML Training time by algorithm |
-| `05_boxplots.png` | Distribution box plots |
+| Chart | Description |
+|-------|-------------|
+| `01_overall_comparison.png` | Normalized GIL vs No-GIL comparison across all workloads |
+| `02_data_preprocessing.png` | Data Preprocessing thread scaling (1→8) |
+| `03_image_processing.png` | Image Processing thread scaling |
+| `04_ml_training.png` | ML Training: algorithms + thread scaling |
+| `05_boxplots.png` | Distribution box plots with t-test results |
 | `05_streaming.png` | Streaming: latency and throughput |
-| `06_simd_vectorization.png` | SIMD benchmarks comparison |
+| `06_simd_vectorization.png` | SIMD/NumPy sequential + threaded |
 | `07_speedup_heatmap.png` | Heatmap of speedups across all modes |
-| `08_confidence_intervals.png` | 95% confidence intervals |
+| `08_confidence_intervals.png` | 95% confidence intervals for speedups |
 | `09_cpu_utilization.png` | CPU utilization (mean / peak) |
 | `10_memory_usage.png` | Memory usage (mean / peak) |
-
-Also generates `results/statistical_analysis_multirun.json` with t-tests and p-values.
+| `11_mandelbrot.png` | Mandelbrot thread scaling |
+| `12_monte_carlo.png` | Monte Carlo thread scaling |
+| `13_fibonacci.png` | Fibonacci thread scaling |
 
 ## Collected Metrics
 
 | Metric | Tool | Description |
 |--------|------|-------------|
-| Execution time | `time.perf_counter()` | Wall time for each workload mode |
+| Execution time | `time.perf_counter()` | Wall time per workload mode |
 | CPU Utilization | `psutil` | Mean and peak % CPU usage |
-| Memory Usage | `psutil` | Mean and peak RAM usage (MB) |
-| Speedup | GIL time / No-GIL time | Acceleration factor without GIL |
-| Scalability | 1/2/4/8 threads | Performance scaling with thread count |
-| Statistical significance | Welch's t-test | p-values for measurement groups |
+| Memory Usage | `psutil` | Mean and peak RAM (MB) |
+| Speedup | GIL time / No-GIL time | Acceleration factor |
+| Scalability | 1/2/4/8 threads | Scaling with thread count |
+| Statistical significance | Welch's t-test | p-values (N=20 measurements) |
+
+## Results
+
+See [RESULTS.md](RESULTS.md) for a detailed summary of benchmark results.
 
 ---
 **Author:** Mykhailo Brodiuk — Diploma Project, 2026

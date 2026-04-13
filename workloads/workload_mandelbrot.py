@@ -4,6 +4,7 @@ import argparse
 import sys
 import threading
 from typing import List
+from pathlib import Path
 
 def mandelbrot(c, max_iter):
     z = 0
@@ -97,5 +98,7 @@ if __name__ == "__main__":
         }
         print(f"  {name}: {final_results[name]['min_time']:.4f}s")
 
-    with open("mandelbrot_results.json", "w") as f:
+    out = Path("results/mandelbrot_results.json")
+    out.parent.mkdir(exist_ok=True)
+    with open(out, "w") as f:
         json.dump(final_results, f, indent=2)

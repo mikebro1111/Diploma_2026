@@ -176,4 +176,4 @@ if __name__ == "__main__":
     with open("results/streaming_results.json", "w") as f:
         json.dump(results, f, indent=2)
     
-    print("\\nResults saved to results/streaming_results.json")
+    print("\nResults saved to results/streaming_results.json")

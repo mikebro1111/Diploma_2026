@@ -1,0 +1,16 @@
+{
+  "sequential": {
+    "numpy": 0.8405131000035908,
+    "numpy_complex": 6.7511032999973395
+  },
+  "threaded": {
+    "numpy_threaded_2": 0.5947487000012188,
+    "numpy_threaded_4": 0.4074006000009831,
+    "numpy_threaded_8": 0.35922500000015134
+  },
+  "matrix": {
+    "matmul": 0.012757399999827612,
+    "elementwise": 0.007699900001171045,
+    "reductions": 0.0011846000052173622
+  }
+}

@@ -2,6 +2,7 @@ import time
 import json
 import argparse
 import threading
+from pathlib import Path
 
 def fib(n):
     if n <= 1:
@@ -72,5 +73,7 @@ if __name__ == "__main__":
         }
         print(f"  {name}: {final_results[name]['min_time']:.4f}s")
 
-    with open("fibonacci_results.json", "w") as f:
+    out = Path("results/fibonacci_results.json")
+    out.parent.mkdir(exist_ok=True)
+    with open(out, "w") as f:
         json.dump(final_results, f, indent=2)

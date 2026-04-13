@@ -22,14 +22,27 @@ import numpy as np
 import psutil
 import threading
 
+# Force UTF-8 output on Windows to avoid cp1251 encoding errors
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 
 # --- Configuration ---
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-VENV_GIL_PYTHON = str(PROJECT_ROOT / "venv_gil" / "bin" / "python")
-VENV_NOGIL_PYTHON = str(PROJECT_ROOT / "venv_nogil" / "bin" / "python")
-VENV_NOGIL_314_PYTHON = str(PROJECT_ROOT / "venv_nogil_314" / "bin" / "python")
 RESULTS_DIR = PROJECT_ROOT / "results"
 CHARTS_DIR = RESULTS_DIR / "charts"
+
+# Cross-platform venv python path: Scripts/python.exe on Windows, bin/python on Unix
+_VENV_BIN = "Scripts" if sys.platform == "win32" else "bin"
+_PYTHON_NAME = "python.exe" if sys.platform == "win32" else "python"
+
+def _venv_python(venv_name: str) -> str:
+    return str(PROJECT_ROOT / venv_name / _VENV_BIN / _PYTHON_NAME)
+
+VENV_GIL_PYTHON = _venv_python("venv_gil")
+VENV_NOGIL_PYTHON = _venv_python("venv_nogil")
+VENV_NOGIL_314_PYTHON = _venv_python("venv_nogil_314")
 
 
 def check_python(python_path: str) -> dict:
@@ -90,7 +103,8 @@ def run_single_workload(python_path: str, script: str, args: list,
     try:
         proc = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, cwd=str(PROJECT_ROOT)
+            text=True, cwd=str(PROJECT_ROOT),
+            env={**os.environ, "PYTHONUTF8": "1"},
         )
         stop_evt = threading.Event()
         monitor = threading.Thread(
@@ -328,7 +342,7 @@ WORKLOADS = [
 
 def run_suite(version_str, gil_path, nogil_path, num_iterations):
     print("=" * 70)
-    print(f"FREE-THREADED PYTHON {version_str} — MULTI-RUN BENCHMARK SUITE")
+    print(f"FREE-THREADED PYTHON {version_str} -- MULTI-RUN BENCHMARK SUITE")
     print(f"Iterations: {num_iterations}")
     print(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 70)
@@ -345,7 +359,7 @@ def run_suite(version_str, gil_path, nogil_path, num_iterations):
     print(f"  No-GIL: {nogil_info.get('version','?')[:50]}  GIL={nogil_info.get('gil_enabled')}")
 
     if not gil_info["ok"] or not nogil_info["ok"]:
-        print(f"❌ ERROR: Python interpreter problem for {version_str}!")
+        print(f"[FAIL] ERROR: Python interpreter problem for {version_str}!")
         sys.exit(1)
 
     # Master record structure (STRICT MINIMALIST: only workloads, no metadata)
@@ -408,12 +422,12 @@ def run_suite(version_str, gil_path, nogil_path, num_iterations):
                         res = run_out.get("resources", {})
                         cpu_i = f"CPU={res.get('cpu_mean_percent','?')}%" if res else ""
                         mem_i = f"MEM={res.get('mem_peak_mb','?')}MB" if res else ""
-                        print(f"✅ {run_out['wall_time']:.2f}s {cpu_i} {mem_i}")
+                        print(f"[OK] {run_out['wall_time']:.2f}s {cpu_i} {mem_i}")
                     else:
-                        print(f"⚠️ Result file {wl_def['result_file']} not found!")
+                        print(f"[WARN] Result file {wl_def['result_file']} not found!")
                 else:
                     err = run_out.get('error', run_out.get('stderr', ''))[:100]
-                    print(f"❌ {err}")
+                    print(f"[FAIL] {err}")
 
             # Summary
             wall_arr = np.array(wl_result[variant]["wall_times"])
@@ -433,11 +447,22 @@ def run_suite(version_str, gil_path, nogil_path, num_iterations):
                 "n": len(wt),
             }
 
-        # Prune raw data for the master JSON to ONLY include gil/nogil blocks as requested
-        pruned_wl = {
-            "gil": {"merged": wl_result["gil"]["merged"]},
-            "nogil": {"merged": wl_result["nogil"]["merged"]}
-        }
+        # Aggregate resource samples and save merged + resource_stats
+        pruned_wl = {}
+        for variant in ["gil", "nogil"]:
+            samples = wl_result[variant]["resource_samples"]
+            res_stats = {}
+            for metric in ["cpu_mean_percent", "cpu_peak_percent", "mem_peak_mb", "mem_mean_mb"]:
+                vals = [s[metric] for s in samples if metric in s]
+                if vals:
+                    res_stats[metric] = {
+                        "mean": round(float(np.mean(vals)), 2),
+                        "max": round(float(np.max(vals)), 2),
+                    }
+            pruned_wl[variant] = {
+                "merged": wl_result[variant]["merged"],
+                "resource_stats": res_stats,
+            }
         master["workloads"][wl_name] = pruned_wl
 
     master_file = out_dir / "multi_run_master.json"
@@ -474,7 +499,7 @@ def main():
     
     # Run 3.14 comparison
     if not version_filter or version_filter == "3.14":
-        VENV_GIL_314_PYTHON = str(PROJECT_ROOT / "venv_gil_314" / "bin" / "python")
+        VENV_GIL_314_PYTHON = _venv_python("venv_gil_314")
         run_suite("3.14", VENV_GIL_314_PYTHON, VENV_NOGIL_314_PYTHON, num_iterations)
 
 if __name__ == "__main__":

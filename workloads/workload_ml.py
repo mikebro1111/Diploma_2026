@@ -15,11 +15,11 @@ def run_benchmark(n_samples: int = 1_000_000, n_features: int = 20, num_runs: in
     n_samples_lr = n_samples * 10
     n_samples_rf = n_samples // 2
 
-    print(f"  Linear Regression Dataset: {n_samples_lr:,} rows × {n_features} cols")
+    print(f"  Linear Regression Dataset: {n_samples_lr:,} rows x {n_features} cols")
     X_reg, y_reg = make_regression(
         n_samples=n_samples_lr, n_features=n_features, noise=0.1, n_targets=5, random_state=42
     )
-    print(f"  Random Forest Dataset: {n_samples_rf:,} rows × {n_features} cols")
+    print(f"  Random Forest Dataset: {n_samples_rf:,} rows x {n_features} cols")
     X_clf, y_clf = make_classification(
         n_samples=n_samples_rf, n_features=n_features, n_classes=2, random_state=42
     )
@@ -73,4 +73,4 @@ if __name__ == "__main__":
     with open(out, "w") as f:
         json.dump(results, f, indent=2)
 
-    print(f"\\nResults saved to {out}")
+    print(f"\nResults saved to {out}")

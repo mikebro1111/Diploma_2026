@@ -91,7 +91,7 @@ class DataPreprocessor:
         # Add a few skewed / non-negative columns (more realistic)
         self.data[:, 2] = np.abs(self.data[:, 2]) * 10    # trip_distance-like
         self.data[:, 3] = np.random.exponential(5, num_rows)  # fare-like
-        print(f"  Dataset: {num_rows:,} rows × {num_cols} cols  "
+        print(f"  Dataset: {num_rows:,} rows x {num_cols} cols  "
               f"({self.data.nbytes / 1e6:.0f} MB)")
 
     # ── Sequential ────────────────────────────────────────────────────────
