@@ -80,6 +80,32 @@ def _monitor_process(pid: int, stop_event: threading.Event,
         stop_event.wait(interval)
 
 
+def compute_resource_stats(samples: list) -> dict:
+    """Aggregate resource samples across multiple runs."""
+    if not samples: return {}
+    
+    # Filter out empty or incomplete samples
+    cpu_means = [s.get("cpu_mean_percent", 0) for s in samples if "cpu_mean_percent" in s]
+    cpu_peaks = [s.get("cpu_peak_percent", 0) for s in samples if "cpu_peak_percent" in s]
+    mem_peaks = [s.get("mem_peak_mb", 0) for s in samples if "mem_peak_mb" in s]
+    mem_means = [s.get("mem_mean_mb", 0) for s in samples if "mem_mean_mb" in s]
+    
+    def _agg(data):
+        if not data: return {}
+        return {
+            "mean": float(np.mean(data)),
+            "peak": float(np.max(data)),
+            "std": float(np.std(data)) if len(data) > 1 else 0.0,
+            "n": len(data)
+        }
+        
+    return {
+        "cpu_mean_percent": _agg(cpu_means),
+        "cpu_peak_percent": _agg(cpu_peaks),
+        "mem_peak_mb": _agg(mem_peaks),
+        "mem_mean_mb": _agg(mem_means)
+    }
+
 def run_single_workload(python_path: str, script: str, args: list,
                         timeout: int = 600) -> dict:
     """Run a single benchmark script, return wall time + CPU/memory metrics."""
@@ -434,9 +460,16 @@ def run_suite(version_str, gil_path, nogil_path, num_iterations):
             }
 
         # Prune raw data for the master JSON to ONLY include gil/nogil blocks as requested
+        # We now include resource_stats for Charts 09-10
         pruned_wl = {
-            "gil": {"merged": wl_result["gil"]["merged"]},
-            "nogil": {"merged": wl_result["nogil"]["merged"]}
+            "gil": {
+                "merged": wl_result["gil"]["merged"],
+                "resource_stats": compute_resource_stats(wl_result["gil"]["resource_samples"])
+            },
+            "nogil": {
+                "merged": wl_result["nogil"]["merged"],
+                "resource_stats": compute_resource_stats(wl_result["nogil"]["resource_samples"])
+            }
         }
         master["workloads"][wl_name] = pruned_wl
 
