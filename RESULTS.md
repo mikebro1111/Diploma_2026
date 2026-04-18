@@ -5,8 +5,17 @@ This document provides a detailed statistical comparison between Python 3.13 and
 ## 1. Executive Summary
 
 - **Parallel Scaling**: Both versions show exceptional scaling in pure Python logic (Fibonacci ~5.0x, Mandelbrot ~3.9x).
-- **Efficiency Gains**: Python 3.14 demonstrates improved stability in Data Preprocessing overhead compared to 3.13.
+- **Efficiency Gains**: Python 3.14 demonstrates significant optimization in memory allocator management for free-threaded workloads, resulting in ~2x faster data preprocessing under high thread counts compared to 3.13.
 - **Resource Profiling**: No-GIL mode introduces a ~5-15% memory overhead in allocation-heavy tasks, but significantly higher CPU saturation confirming true parallel execution.
+
+### Python 3.14 vs 3.13 Efficiency Benchmarks (Data Preprocessing)
+
+| Config | 3.13 No-GIL | 3.14 No-GIL | Improvement |
+|---|---|---|---|
+| Sequential (T1) | 3.28s | 2.19s | **1.50x** |
+| Parallel (T8) | 2.28s | 1.06s | **2.15x** |
+
+*Interpretation: Python 3.14 architecture significantly reduces the locking overhead for frequent object allocations in the free-threaded build.*
 
 ## 2. Workload Performance Comparison
 
@@ -34,14 +43,16 @@ Charts: [3.13](results/3.13/charts/13_fibonacci.png), [3.14](results/3.14/charts
 
 Charts: [3.13](results/3.13/charts/11_mandelbrot.png), [3.14](results/3.14/charts/11_mandelbrot.png)
 
-### Streaming Analytics — 2M Events
+### Streaming Analytics — 2M Events (Thread Scaling)
 
-| Config | 3.13 GIL (T1) | 3.13 No-GIL (T8) | Speedup | 3.14 GIL (T1) | 3.14 No-GIL (T8) | Speedup |
-|---|---|---|---|---|---|---|
-| Avg Latency | 48.2ms | 20.4ms | **2.36x** | 47.1ms | 13.5ms | **3.49x** |
-| Throughput | 41.5K/s | 93.1K/s | **2.24x** | 42.5K/s | 145.6K/s | **3.43x** |
+| Workers | 3.13 No-GIL | 3.13 Speedup* | 3.14 No-GIL | 3.14 Speedup* |
+|---|---|---|---|---|
+| 1 | 58.27ms | 1.00x | 46.56ms | 1.00x |
+| 2 | 28.91ms | 2.02x | 24.25ms | 1.92x |
+| 4 | 15.33ms | 3.80x | 12.94ms | 3.60x |
+| 8 | 20.37ms | 2.86x | 13.55ms | 3.44x |
 
-**Note**: Python 3.14 provides a massive 3.5x throughput boost for streaming event processing compared to the GIL baseline.
+*\*Speedup normalized to single-thread No-GIL baseline to show scalability. GIL baseline is fixed at ~48ms due to serialized execution.*
 
 Charts: [3.13](results/3.13/charts/05_streaming.png), [3.14](results/3.14/charts/05_streaming.png)
 

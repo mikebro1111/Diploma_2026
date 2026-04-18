@@ -50,64 +50,37 @@ Diploma_2026/
 ### 1. System Dependencies
 
 <details>
-<summary><b>macOS</b></summary>
+<summary><b>macOS (Manual Setup)</b></summary>
 
+Install system dependencies:
 ```bash
 xcode-select --install
 brew install openssl readline sqlite3 xz zlib tcl-tk pyenv
 ```
 
-Install Python via pyenv:
+Install Python versions:
 ```bash
 pyenv install 3.13.0 && pyenv install 3.13.0t
-pyenv install 3.14-dev  # dev branch often includes free-threading options
+pyenv install 3.14.0 && pyenv install 3.14.0t
 ```
 
-### 2. Environment Setup
-
-<details>
-<summary><b>macOS / Linux (automated)</b></summary>
-
-Shell script automates `venv` creation and dependency installation:
-```bash
-chmod +x scripts/setup_envs_macos.sh
-./scripts/setup_envs_macos.sh
-```
-</details>
-
-<details>
-<summary><b>macOS / Linux (manual)</b></summary>
-
+Create virtual environments:
 ```bash
 cd Diploma_2026
 # Python 3.13
 ~/.pyenv/versions/3.13.0/bin/python3.13   -m venv venv_gil
 ~/.pyenv/versions/3.13.0t/bin/python3.13t -m venv venv_nogil
-# Python 3.14
-~/.pyenv/versions/3.14-dev/bin/python3.14 -m venv venv_gil_314
-~/.pyenv/versions/3.14-dev/bin/python3.14 -m venv venv_nogil_314
-```
-</details>
-cd Diploma_2026
-
-# Python 3.13
-~/.pyenv/versions/3.13.0/bin/python3.13   -m venv venv_gil
-~/.pyenv/versions/3.13.0t/bin/python3.13t -m venv venv_nogil
-
 # Python 3.14
 ~/.pyenv/versions/3.14.0/bin/python3.14   -m venv venv_gil_314
 ~/.pyenv/versions/3.14.0t/bin/python3.14t -m venv venv_nogil_314
 ```
 
-### 3. Dependencies
-
-<details>
-<summary><b>macOS</b></summary>
-
+Install dependencies:
 ```bash
 venv_gil/bin/pip install -r requirements_gil.txt
 venv_nogil/bin/pip install -r requirements_nogil.txt
-# Repeat for 3.14 venvs
+venv_gil_314/bin/pip install -r requirements_gil.txt
+venv_nogil_314/bin/pip install -r requirements_nogil.txt
 ```
 </details>
 
@@ -185,14 +158,14 @@ set "PYTHONUTF8=1" && venv_gil_314\Scripts\python scripts\visualize_results.py r
 ### Individual Workloads
 
 ```bash
-python workloads/workload_data_preprocessing.py 10000000
-python workloads/workload_image_processing.py images_input images_output
-python workloads/workload_ml.py 500000
-python workloads/workload_streaming.py 2000000
-python workloads/workload_simd.py 500000000
-python workloads/workload_mandelbrot.py 2236 1
-python workloads/workload_monte_carlo.py 300000000 1
-python workloads/workload_fibonacci.py 34 24 1
+venv_gil/bin/python workloads/workload_data_preprocessing.py 10000000
+venv_gil/bin/python workloads/workload_image_processing.py images_input images_output
+venv_gil/bin/python workloads/workload_ml.py 500000
+venv_gil/bin/python workloads/workload_streaming.py 2000000
+venv_gil/bin/python workloads/workload_simd.py 500000000
+venv_gil/bin/python workloads/workload_mandelbrot.py 2236 1
+venv_gil/bin/python workloads/workload_monte_carlo.py 300000000 1
+venv_gil/bin/python workloads/workload_fibonacci.py 34 24 1
 ```
 
 ## Generated Charts
