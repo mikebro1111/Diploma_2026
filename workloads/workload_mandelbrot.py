@@ -22,7 +22,7 @@ def mandelbrot_range(x_start, x_end, y_start, y_end, width, height, max_iter):
             x0 = x_start + (px / width) * (x_end - x_start)
             c = complex(x0, y0)
             row.append(mandelbrot(c, max_iter))
-        rows.append(rows) # Actually we don't need to store it all, just compute it to stress CPU
+        rows.append(row) # Store the computed row correctly
     return len(rows)
 
 def worker(width, height, max_iter, start_row, end_row, results, idx):
